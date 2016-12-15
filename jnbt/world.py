@@ -712,7 +712,7 @@ class Region:
             if content:
                 for c in chunks:
                     c._read( file )
-                    yield chunk
+                    yield c
             else:
                 yield from chunks
 
