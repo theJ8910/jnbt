@@ -17,7 +17,7 @@ Finding iron ore in the overworld:
     
     overworld = world[ jnbt.DIM_OVERWORLD ]
     for block in overworld.iterBlocks():
-        if block.id == :
+        if block.id == 15:
             pass
 """
 
@@ -41,7 +41,7 @@ from .shared import (
 )
 
 #read, NBTDocument and TAG_* Classes
-from .tag import NBTDocument, TAG_Byte, TAG_Short, TAG_Int, TAG_Long, TAG_Float, TAG_Double, TAG_Byte_Array, TAG_String, TAG_List, TAG_Compound, TAG_Int_Array, read
+from .tag import read, NBTDocument, TAG_Byte, TAG_Short, TAG_Int, TAG_Long, TAG_Float, TAG_Double, TAG_Byte_Array, TAG_String, TAG_List, TAG_Compound, TAG_Int_Array
 
 #Classes and functions to interact with Minecraft worlds
 from .world import DIM_NETHER, DIM_OVERWORLD, DIM_END, World, Dimension, Region, Chunk, Block, setMinecraftDir, getMinecraftPath
@@ -59,7 +59,7 @@ __all__ = [
     "TAG_END", "TAG_BYTE", "TAG_SHORT", "TAG_INT", "TAG_LONG", "TAG_FLOAT", "TAG_DOUBLE", "TAG_BYTE_ARRAY", "TAG_STRING", "TAG_LIST", "TAG_COMPOUND", "TAG_INT_ARRAY",
     "TAG_COUNT",
     "NBTFormatError", "WrongTagError", "DuplicateNameError", "UnknownTagTypeError", "OutOfBoundsError",
-    "NBTDocument", "TAG_Byte", "TAG_Short", "TAG_Int", "TAG_Long", "TAG_Float", "TAG_Double", "TAG_Byte_Array", "TAG_String", "TAG_List", "TAG_Compound", "TAG_Int_Array", "read",
+    "read", "NBTDocument", "TAG_Byte", "TAG_Short", "TAG_Int", "TAG_Long", "TAG_Float", "TAG_Double", "TAG_Byte_Array", "TAG_String", "TAG_List", "TAG_Compound", "TAG_Int_Array",
     "DIM_NETHER", "DIM_OVERWORLD", "DIM_END", "World", "Dimension", "Region", "Chunk", "Block", "setMinecraftDir", "getMinecraftPath",
     "treeparse", "parse",
     "AbstractNBTHandler", "PrintNBTHandler", "TreeNBTHandler",

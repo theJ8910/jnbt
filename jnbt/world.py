@@ -10,7 +10,6 @@ import re
 import json
 import urllib.request
 import zlib
-import time
 from io import BytesIO
 from collections import OrderedDict
 from array import array
@@ -708,9 +707,7 @@ class Region:
         See help( jnbt.Region.getChunk ) for information on content.
         """
         with open( self.path, "rb" ) as file:
-            t = time.perf_counter()
             chunks = _readChunks( file, 32 * self.x, 32 * self.z )
-            print( time.perf_counter() - t )
 
             if content:
                 for c in chunks:
