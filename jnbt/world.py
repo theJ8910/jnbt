@@ -323,7 +323,7 @@ def nibble( ba, idx ):
     #Note: bytearray has unsigned bytes in range [0,255]
     return ( ba[idx//2] & 0x0F ) if (idx & 1) == 0 else ( ba[idx//2] >> 4 )
 
-def _readChunks( file, bx, bz ):
+def _readChunks( file, region ):
     """
     Reads chunks from the given readable file-like object, file.
     Returns a Chunk list sorted by offset in ascending order.
@@ -348,13 +348,17 @@ def _readChunks( file, bx, bz ):
         z,x = divmod( i, 32 )
         
         c = Chunk(
-            bx + x,
-            bz + z,
+            32 * region.x + x,
+            32 * region.z + z,
             x,
             z,
             offset,
             allocsize,
-            timestamps[ i ]
+            timestamps[ i ],
+            None,
+            None,
+            None,
+            region
         )
 
         i2c[i] = c
@@ -707,7 +711,7 @@ class Region:
         See help( jnbt.Region.getChunk ) for information on content.
         """
         with open( self.path, "rb" ) as file:
-            chunks = _readChunks( file, 32 * self.x, 32 * self.z )
+            chunks = _readChunks( file, self )
 
             if content:
                 for c in chunks:
