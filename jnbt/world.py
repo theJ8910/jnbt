@@ -534,6 +534,15 @@ class World:
         return players
     players = property( getPlayers )
 
+    def __iter__( self ):
+        """
+        Handles iter( world ). Equivalent to world.iterDimensions().
+        Allows use of this class in a for loop like so:
+            for dimension in world:
+                ...
+        """
+        return self.iterDimensions()
+
     def __getitem__( self, index ):
         """Handles world[id]. Equivalent to world.getDimension( id )."""
         return self.getDimension( index )
@@ -673,6 +682,15 @@ class Dimension:
         """Handles dimension[x,z]. Equivalent to dimension.getRegion( x, z )."""
         return self.getRegion( *index )
 
+    def __iter__( self ):
+        """
+        Handles iter( dimension ). Equivalent to dimension.iterRegions().
+        Allows use of this class in a for loop like so:
+            for region in dimension:
+                ...
+        """
+        return self.iterRegions()
+
     def __repr__( self ):
         return "Dimension({:d},'{}')".format( self.id, self.path )
 
@@ -794,6 +812,15 @@ class Region:
         See help( jnbt.Region.getChunk ) for information on content.
         """
         pass
+
+    def __iter__( self ):
+        """
+        Handles iter( region ). Equivalent to region.iterChunks().
+        Allows use of this class in a for loop like so:
+            for chunk in region:
+                ...
+        """
+        return self.iterChunks()
 
     def __getitem__( self, index ):
         """Handles region[x,z]. Equivalent to region.getChunk( x, z )."""
@@ -957,6 +984,15 @@ class Chunk:
             te[int(tag["x"]),int(tag["y"]),int(tag["z"])] = tag
         self._tileEntities = te
         return te
+
+    def __iter__( self ):
+        """
+        Handles iter( chunk ). Equivalent to chunk.iterBlocks().
+        Allows use of this class in a for loop like so:
+            for block in chunk:
+                ...
+        """
+        return self.iterBlocks()
 
     def __getitem__( self, index ):
         """Handles chunk[x,y,z]. Equivalent to chunk.getBlock( x, y, z )."""
