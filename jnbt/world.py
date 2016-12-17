@@ -366,6 +366,11 @@ def _readChunks( file, region ):
     #Return a list of chunks sorted by offset (so we're always reading in a forward direction)
     return sorted( i2c.values(), key=lambda c: c.offset )
 
+def _getBlockIDWithAdd( index, blocks, add ):
+    return blocks[index] + ( nibble( add, index ) << 8 )
+def _getBlockIDWithoutAdd( index, blocks, add ):
+    return blocks[index]
+
 class World:
     """
     Represents an entire Minecraft world.
@@ -756,7 +761,7 @@ class Region:
                 return None
 
             offset     = 4096 * ( ( loc & 0xFFFFFF00 ) >> 8 )
-            sectorsize = 4096 * ( ( loc & 0x000000FF )      )
+            allocsize = 4096 * ( ( loc & 0x000000FF )      )
 
             #Read timestamp
             file.seek( 4096 + i4, os.SEEK_SET )
@@ -769,8 +774,12 @@ class Region:
                 cx,
                 cz,
                 offset,
-                sectorsize,
-                timestamp
+                allocsize,
+                timestamp,
+                None,
+                None,
+                None,
+                self
             )
             if content:
                 c._read( file )
@@ -845,9 +854,10 @@ class Chunk:
         Each key will be a tuple of absolute block coordinates, (x,y,z).
         Each value will be a TAG_Compound containing the named tags: x, y, z, id.
         """
-        if self._tileEntities is None:
-            self._initTileEntities()
-        return self._tileEntities
+        tileEntities = self.tileEntities
+        if tileEntities is None:
+            tileEntities = self._initTileEntities()
+        return tileEntities
     tileEntities = property( getTileEntities )
 
     def getTileEntity( self, x, y, z ):
@@ -855,52 +865,34 @@ class Chunk:
         Returns the tile entity at the given block coordinates, (x, y, z).
         Returns None if there is no tile entity at these coordinates
         """
-        if self._tileEntities is None:
-            self._initTileEntities()
-        return self._tileEntities.get( ( x, y, z ) )
+        tileEntities = self._tileEntities
+        if tileEntities is None:
+            tileEntities = self._initTileEntities()
+        return tileEntities.get( ( x, y, z ) )
 
     def iterBlocks( self ):
         """
         Generator that iterates over every block in this chunk.
         For each block, yields a Block() describing it.
         """
-        
-        def getBlockIDWithAdd( index, blocks, add ):
-            return blocks[index] + ( nibble( add, index ) << 8 )
-        def getBlockIDWithoutAdd( index, blocks, add ):
-            return blocks[index]
-
-        xr = 16 * self.x
-        xr = range( xr, xr + 16 )
-        zr = 16 * self.z
-        zr = range( zr, zr + 16 )
-
+        #Reuse the same Block() instance to avoid performance penalty of repeated Block#__init__() calls.
+        block = Block( self )
         for section in self.nbt["Level"]["Sections"]:
-            yr         = 16 * int( section["Y"] )
-            yr         = range( yr, yr + 16 )
-            index      = 0
-            blocks     = section["Blocks"]
-            add        = section.get( "Add" )
-            data       = section["Data"]
-            blocklight = section["BlockLight"]
-            skylight   = section["SkyLight"]
-            getBlockID = getBlockIDWithAdd if add else getBlockIDWithoutAdd
-
-            for y in yr:
-                for z in zr:
-                    for x in xr:
-                        yield Block(
-                            x,
-                            y,
-                            z,
-                            getBlockID( index, blocks, add ),
-                            nibble( data, index ),
-                            nibble( blocklight, index ),
-                            nibble( skylight, index ),
-                            self.getTileEntity( x, y, z ),
-                            self
-                        )
-                        index += 1
+            baseY = 16 * int( section["Y"] )
+            add = section.get("Add")
+            sectionData = (
+                baseY,
+                section["Blocks"],
+                add,
+                _getBlockIDWithAdd if add else _getBlockIDWithoutAdd,
+                section["Data"],
+                section["BlockLight"],
+                section["SkyLight"]
+            )
+            block._s = sectionData
+            for i in range( 1024 ):
+                block._i = i
+                yield block
 
     def getBiome( self, x, z ):
         """
@@ -914,28 +906,22 @@ class Chunk:
         Returns data about the block at block coordinates (x, y, z) relative to the chunk.
         x and z are expected to be in the range [0,15].
         y is expected to be in the range [0,255].
-        Returns (blockid, meta, blocklight, skylight).
+        Returns a Block() describing the block at that position.
         """
         for section in self.nbt["Level"]["Sections"]:
             baseY = 16 * int( section["Y"] )
             if y >= baseY and y < baseY + 16:
-                index = 256*(y-baseY) + 16*z + x
-                blockid = section["Blocks"][index]
                 add = section.get("Add")
-                if add:
-                    blockid += nibble( add, index ) << 8
-
-                return Block(
-                    16 * self.x + x,
-                    y,
-                    16 * self.z + z,
-                    blockid,
-                    nibble( section["Data"],       index ),
-                    nibble( section["BlockLight"], index ),
-                    nibble( section["SkyLight"],   index ),
-                    self.getTileEntity( x, y, z ),
-                    self
+                sectionData = (
+                    baseY,
+                    section["Blocks"],
+                    add,
+                    _getBlockIDWithAdd if add else _getBlockIDWithoutAdd,
+                    section["Data"],
+                    section["BlockLight"],
+                    section["SkyLight"]
                 )
+                return Block( self, sectionData, 256*(y-baseY) + 16*z + x )
         return None
 
     def _read( self, file ):
@@ -970,6 +956,7 @@ class Chunk:
         for tag in self.nbt["Level"]["TileEntities"]:
             te[int(tag["x"]),int(tag["y"]),int(tag["z"])] = tag
         self._tileEntities = te
+        return te
 
     def __getitem__( self, index ):
         """Handles chunk[x,y,z]. Equivalent to chunk.getBlock( x, y, z )."""
@@ -994,18 +981,77 @@ class Block:
     * tileEntity is the TAG_Compound for this block's tile entity, or None if this block is not a tile entity
     * chunk, region, dimension, and world are references to the chunk, region, dimension, and world that contains this block.
     """
-    __slots__ = ( "x", "y", "z", "id", "meta", "blockLight", "skyLight", "tileEntity", "chunk" )
+    __slots__ = ( "chunk", "_s", "_i" )
 
-    def __init__( self, x, y, z, id, meta, blockLight, skyLight, tileEntity, chunk ):
-        self.x          = x
-        self.y          = y
-        self.z          = z
-        self.id         = id
-        self.meta       = meta
-        self.blockLight = blockLight
-        self.skyLight   = skyLight
-        self.tileEntity = tileEntity
-        self.chunk      = chunk
+    def __init__( self, chunk = None, sectionData = None, index = None ):
+        self.chunk = chunk       #Chunk containing this block
+        self._s    = sectionData #Data relating to the section containing this block
+        self._i    = index       #Index of this block within the section
+    
+    def getPos( self ):
+        y, index = divmod( self._i, 256 )
+        z, x = divmod( index, 16 )
+        c = self.chunk
+        pos = (
+            16 * c.x   + x,
+            self._s[0] + y,
+            16 * c.z   + z
+        )
+        return pos
+    pos = property( getPos )
+
+    def getX( self ):
+        return 16 * self.chunk.x + ( self._i & 15 )
+    x = property( getX )
+    
+    def getY( self ):
+        return self._s[0] + ( self._i // 256 )
+    y = property( getY )
+
+    def getZ( self ):
+        return 16 * self.chunk.z + ( ( self._i & 255 ) // 16 )
+    z = property( getZ )
+
+    def getID( self ):
+        s = self._s
+        return s[3]( self._i, s[1], s[2] )
+    id = property( getID )
+
+    def getName( self ):
+        """
+        Return the name of the block, or None if not recognized.
+        e.g. "minecraft:iron_ore"
+        """
+        #Get name from leveldata if possible
+        r = self.getWorld()
+        if r is not None:
+            r = r.getBlockName( self.id )
+            if r is not None:
+                return r
+        #Get name from built-in Minecraft mappings if possible
+        return _blockIDtoName.get( self.id )
+    name  = property( getName )
+
+    def getMeta( self ):
+        return nibble( self._s[4], self._i )
+    meta = property( getMeta )
+
+    def getBlockLight( self ):
+        return nibble( self._s[5], self._i )
+    blockLight = property( getBlockLight )
+
+    def getSkyLight( self ):
+        return nibble( self._s[6], self._i )
+    skyLight = property( getSkyLight )
+
+    def getLight( self ):
+        """Return the light level at this block's position."""
+        return min( 15, self.blockLight + self.skyLight )
+    light = property( getLight )
+
+    def getTileEntity( self ):
+        return self.chunk.getTileEntity( *self.getPos() )
+    tileEntity = property( getTileEntity )
 
     def getRegion( self ):
         """Returns the region this block is a part of."""
@@ -1033,26 +1079,6 @@ class Block:
                 if r is not None:
                     return r.world
     world = property( getWorld )
-
-    def getName( self ):
-        """
-        Return the name of the block, or None if not recognized.
-        e.g. "minecraft:iron_ore"
-        """
-        #Get name from leveldata if possible
-        r = self.getWorld()
-        if r is not None:
-            r = r.getBlockName( self.id )
-            if r is not None:
-                return r
-        #Get name from built-in Minecraft mappings if possible
-        return _blockIDtoName.get( self.id )
-    name  = property( getName )
-
-    def getLight( self ):
-        """Return the light level at this block's position."""
-        return min( 15, self.blockLight + self.skyLight )    
-    light = property( getLight )
 
     def __repr__( self ):
         return "Block({:d},{:d},{:d},{:d},{:d})".format( self.x, self.y, self.z, self.id, self.meta )

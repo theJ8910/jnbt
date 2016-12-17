@@ -18,7 +18,7 @@ Finding iron ore in the overworld:
     overworld = world[ jnbt.DIM_OVERWORLD ]
     for block in overworld.iterBlocks():
         if block.id == 15:
-            pass
+            print( block.x, block.y, block.z )
 """
 
 #Useful links:
