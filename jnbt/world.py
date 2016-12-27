@@ -703,7 +703,7 @@ class Region:
     A region consists of a sparsely populated 32x32 grid of chunks.
     Overall, a region encompasses a 512x256x512 block area.
     """
-    __slots__ = ( "x", "z", "path", "dimension", "_chunks" )
+    __slots__ = ( "x", "z", "path", "dimension", "_chunks", "_length" )
 
     def __init__( self, rx, rz, path, dimension ):
         """
@@ -720,6 +720,7 @@ class Region:
         self.dimension = dimension
 
         self._chunks = None  #Cached chunks
+        self._length = None  #Number of chunks in this region
 
     def getWorld( self ):
         """Return the world this region belongs to."""
@@ -812,6 +813,22 @@ class Region:
         See help( jnbt.Region.getChunk ) for information on content.
         """
         pass
+
+    def __len__( self ):
+        """
+        Returns the number of chunks in this region.
+        Returns an int in the range [0, 1024].
+        """
+        l = self._length
+        if l is None:
+            l = 0
+            with open( self.path, "rb" ) as file:
+                locations  = _ruis( file, 1024 )
+                for location in locations:
+                    if location != 0:
+                        l += 1
+            self._length = l
+        return l
 
     def __iter__( self ):
         """
