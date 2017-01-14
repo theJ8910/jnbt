@@ -1,9 +1,7 @@
 from collections import deque
 from collections import OrderedDict
 
-from array import array
-
-from .shared import TAG_NAMES, tagNameString as _tns, tagListString as _tls
+from .shared import TAG_NAMES, tagNameString as _tns, tagListString as _tls, s4array
 
 class AbstractNBTHandler:
     """
@@ -137,7 +135,7 @@ class AbstractNBTHandler:
         """
         Called when the parser reads one or more integers from the current TAG_Int_Array.
 
-        values will be an array( "l" ), i.e. an array of signed 4-byte integers.
+        values will be an array of signed 4-byte integers.
 
         Depending on how many integers are in the TAG_Int_Array and how the parser is configured, the parser may call this method several times until all the integers in the array are read.
         """
@@ -273,7 +271,7 @@ class TreeNBTHandler( AbstractNBTHandler ):
     def endCompound( self ):
         self._pop()
     def startIntArray( self, length ):
-        a = array( "l" )
+        a = s4array()
         self._p( a )
         self._b = a
     def ints( self, values ):

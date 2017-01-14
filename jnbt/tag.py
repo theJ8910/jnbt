@@ -16,7 +16,7 @@ from io import BytesIO, StringIO
 from .shared import (
     NBTFormatError, WrongTagError, DuplicateNameError, UnknownTagTypeError, OutOfBoundsError,
     TAG_END, TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG, TAG_FLOAT, TAG_DOUBLE, TAG_BYTE_ARRAY, TAG_STRING, TAG_LIST, TAG_COMPOUND, TAG_INT_ARRAY,
-    TAG_NAMES, TAG_COUNT
+    TAG_NAMES, TAG_COUNT, SIGNED_INT_TYPE
 )
 
 #import with parentheses doesn't support renaming
@@ -362,10 +362,10 @@ class TAG_String( str, _BaseTag ):
 class TAG_Int_Array( array, _BaseTag ):
     """
     Represents a TAG_Int_Array.
-    TAG_Compound is an array("l") subclass and generally works the same way and in the same places any other sequence (tuple, list, array etc) would.
+    TAG_Compound is a signed 4-byte int array subclass and generally works the same way and in the same places any other sequence (tuple, list, array etc) would.
 
     A TAG_Int_Array may not contain more than 2147483647 integers (8 GiB), however this is not enforced.
-    Because this is an array("l"), its values are limited to a signed 4-byte integer's range: [-2147483648, 2147483647].
+    Because this is an array of signed 4-byte integers, its values are limited to a signed 4-byte integer's range: [-2147483648, 2147483647].
     """
     tagType    = TAG_INT_ARRAY
     isIntArray = True
@@ -375,7 +375,7 @@ class TAG_Int_Array( array, _BaseTag ):
 
     #array implements __new__ rather than __init__
     def __new__( cls, *args, **kwargs ):
-        return array.__new__( cls, "l", *args, **kwargs )
+        return array.__new__( cls, SIGNED_INT_TYPE, *args, **kwargs )
 
     def __repr__( self ):
         if len( self ) > 0:

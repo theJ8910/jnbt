@@ -12,7 +12,6 @@ import urllib.request
 import zlib
 from io import BytesIO
 from collections import OrderedDict
-from array import array
 
 from . import tag
 from .shared import read as _r, readUnsignedByte as _rub, readUnsignedInt as _rui, readUnsignedInts as _ruis

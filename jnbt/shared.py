@@ -1,5 +1,5 @@
 import sys
-from struct import Struct
+from struct import calcsize, Struct
 from array import array
 
 #Tag Types
@@ -13,7 +13,7 @@ TAG_LONG       = 4  #A TAG_Long payload stores an 8-byte big-endian signed integ
 TAG_FLOAT      = 5  #A TAG_Float payload stores a big-endian float (a 4-byte IEEE 754-2008, aka binary32).
 TAG_DOUBLE     = 6  #A TAG_Double payload stores a big-endian double (an 8-byte IEEE 754-2008, aka binary64).
 TAG_BYTE_ARRAY = 7  #A TAG_Byte_Array stores bytes of an unspecified format. The payload consists of the length of the array (a 4-byte big-endian signed integer), followed by exactly that many bytes.
-TAG_STRING     = 8  #A TAG_String stores a UTF-8 encoded string. It starts with the length of the string _in bytes_ (a 2-byte big-endian signed integer), followed by the encoded bytes.
+TAG_STRING     = 8  #A TAG_String stores a UTF-8 encoded string. It starts with the length of the encoded string _in bytes_ (a 2-byte big-endian signed integer), followed by the encoded bytes.
 TAG_LIST       = 9  #A TAG_List stores several tags of the same type. The payload consists of a single byte encoding the tagType, followed by the length of the list (a 4-byte big-endian signed integer), followed by that many payloads of the specified tag.
 TAG_COMPOUND   = 10 #A TAG_Compound stored several uniquely-named tags of any type. The payload consists of several pairs of named tag headers + tag payloads and is terminated by a TAG_End (null byte).
 TAG_INT_ARRAY  = 11 #A TAG_Int_Array's payload consists of the length of the array (a 4-byte big-endian signed integer) followed by that many 4-byte big-endian signed integers.
@@ -37,16 +37,28 @@ TAG_NAMES = (
 #Total number of tags supported by this version of the library.
 TAG_COUNT = len( TAG_NAMES )
 
+#Datatypes for signed and unsigned 4-byte integers
+#Unfortunately, we have to select these at runtime because these datatypes are free to vary in size from system to system.
+#We /need/ a 4-byte integer type: select one here, or fail if one is not available.
+if calcsize( "i" ) == 4:
+    SIGNED_INT_TYPE   = "i"
+    UNSIGNED_INT_TYPE = "I"
+elif calcsize( "l" ) == 4:
+    SIGNED_INT_TYPE   = "l"
+    UNSIGNED_INT_TYPE = "L"
+else:
+    raise OSError( "No 4-byte datatype available." )
+
 #Structs
-_NT = Struct( ">bh" )    #Named tag info
-_TL = Struct( ">bi" )    #Tag list info
-_B  = Struct( ">b" )     #Signed byte (1 byte)
-_S  = Struct( ">h" )     #Signed big-endian short (2 bytes)
-_I  = Struct( ">i" )     #Signed big-endian int (4 bytes)
-_L  = Struct( ">q" )     #Signed big-endian long (8 bytes)
-_F  = Struct( ">f" )     #Big-endian float (4 bytes)
-_D  = Struct( ">d" )     #Big-endian double (8 bytes)
-_UI = Struct( ">I" )     #Unsigned big-endian int (4 bytes)
+_NT = Struct( ">bh"                   )     #Named tag info
+_TL = Struct( ">b" + SIGNED_INT_TYPE  )     #Tag list info
+_B  = Struct( ">b"                    )     #Signed byte (1 byte)
+_S  = Struct( ">h"                    )     #Signed big-endian short (2 bytes)
+_I  = Struct( ">" + SIGNED_INT_TYPE   )     #Signed big-endian int (4 bytes)
+_L  = Struct( ">q"                    )     #Signed big-endian long (8 bytes)
+_F  = Struct( ">f"                    )     #Big-endian float (4 bytes)
+_D  = Struct( ">d"                    )     #Big-endian double (8 bytes)
+_UI = Struct( ">" + UNSIGNED_INT_TYPE )     #Unsigned big-endian int (4 bytes)
 
 class NBTFormatError( Exception ):
     """This exception is raised when parsing, writing, or modifying data that violates the NBT specification."""
@@ -118,25 +130,11 @@ def tagListString( length, tagType ):
         return "0 entries"
     return "{:d} {:s}{}".format( length, TAG_NAMES[tagType], "s" if length != 1 else "" )
 
-#_ctia
-def convertToIntArray( v ):
-    """Converts the given iterable of ints, v, to an array("l") if it isn't one already."""
-    if isinstance( v, array ) and v.typecode == "l":
-        return v
-    return array( "l", v )
-
 #_avtt
 def assertValidTagType( tagType ):
     """Raises UnknownTagTypeError if the given tagType is unrecognized"""
     if tagType < 0 or tagType >= TAG_COUNT:
         raise UnknownTagTypeError( tagType )
-
-def assertIntArray( a ):
-    """Asserts that a is an array("l"). Raises TypeError if it is not."""
-    if type( a ) is not array:
-        raise TypeError( "Wrong type for values: expected array(\"l\")" )
-    if a.typecode != "l":
-        raise TypeError( "Wrong array typecode for values: expected \"l\", got \"{}\"".format( a.typecode ) )
 
 #_r
 def read( i, n ):
@@ -347,81 +345,78 @@ _WRITERS = (
     writeIntArray   #TAG_Int_Array
 )
 
-if sys.byteorder == "little":
-    #_ris
-    def readInts( i, n ):
-        """
-        Reads n signed, big-endian, 4-byte integers from i (a readable file-like object) into an array and returns it.
-        This version of readInts runs on little-endian systems.
-        """
-        a = array( "l" )
-        a.fromfile( i, n )
-        #array assumes native-endianness in the data it reads to populate itself.
-        #Therefore, to properly read integers with big-endian ordering on little-endian systems
-        #we must reverse the endianness with byteswap().
-        a.byteswap()
-        return a
-    #_ruis
-    def readUnsignedInts( i, n ):
-        """
-        Reads n unsigned, big-endian, 4-byte integers from i (a readable file-like object) into an array and returns it.
-        This version of readInts runs on little-endian systems.
-        """
-        a = array( "L" )
-        a.fromfile( i, n )
-        a.byteswap()
-        return a
-    #_wis
-    def writeInts( a, o ):
-        """
-        Writes signed, big-endian, 4-byte integers stored in the given array, a, to the given writable file-like object, o.
-        This version of writeInts runs on little-endian systems.
-        """
-        #Same deal as in readInts, we have to byteswap to go from little-endian to big-endian
-        a.byteswap()
-        a.tofile( o )
-    #_bm
-    def byteswapMaybe( a ):
-        """
-        Byteswap the given array if on a little-endian system. Otherwise, do nothing.
-        This should be done after reading big-endian data to convert it to native-endian,
-        or before writing native-endian data to convert it to big-endian.
+#Compile platform-dependent functions during loadtime to avoid runtime lookup costs.
 
-        This version of byteswapMaybe runs on little-endian systems.
-        """
-        a.byteswap()
-else:
-    #_ris
-    def readInts( i, n ):
-        """
-        Reads n signed, big-endian, 4-byte integers from i (a readable file-like object) into an array and returns it.
-        This version of readInts runs on big-endian systems.
-        """
-        a = array( "l" )
-        a.fromfile( i, n )
-        return a
-    #_ruis
-    def readUnsignedInts( i, n ):
-        """
-        Reads n unsigned, big-endian, 4-byte integers from i (a readable file-like object) into an array and returns it.
-        This version of readUnsignedInts runs on big-endian systems.
-        """
-        a = array( "L" )
-        a.fromfile( i, n )
-        return a
-    #_wis
-    def writeInts( a, o ):
-        """
-        Writes signed, big-endian, 4-byte integers stored in the given array, a, to the given writable file-like object, o.
-        This version of writeInts runs on big-endian systems.
-        """
-        a.tofile( o )
-    def byteswapMaybe( a ):
-        """
-        Byteswap the given array if on a little-endian system. Otherwise, do nothing.
-        This should be done after reading big-endian data to convert it to native-endian,
-        or before writing native-endian data to convert it to big-endian.
+#We may use either "i" or "l" as an array datatype depending on the system.
+#array assumes native-endianness in the data it reads to populate itself.
+#Therefore, to properly read integers with big-endian ordering on little-endian systems
+#we must reverse the endianness with byteswap().
+exec(
+"""
+#_ris
+def readInts( i, n ):
+    \"\"\"
+    Reads n signed, big-endian, 4-byte integers from i (a readable file-like object) into an array and returns it.
+    \"\"\"
+    a = array( "{SIGNED_INT_TYPE}" )
+    a.fromfile( i, n )
+    {BYTESWAP}
+    return a
 
-        This version of byteswapMaybe runs on big-endian systems.
-        """
-        pass
+#_ruis
+def readUnsignedInts( i, n ):
+    \"\"\"
+    Reads n unsigned, big-endian, 4-byte integers from i (a readable file-like object) into an array and returns it.
+    \"\"\"
+    a = array( "{UNSIGNED_INT_TYPE}" )
+    a.fromfile( i, n )
+    {BYTESWAP}
+    return a
+#_wis
+def writeInts( a, o ):
+    \"\"\"
+    Writes signed, big-endian, 4-byte integers stored in the given array, a, to the given writable file-like object, o.
+    \"\"\"
+    {BYTESWAP}
+    a.tofile( o )
+
+#_bm
+def byteswapMaybe( a ):
+    \"\"\"
+    Byteswap the given array if on a little-endian system. Otherwise, do nothing.
+    This should be done after reading big-endian data to convert it to native-endian,
+    or before writing native-endian data to convert it to big-endian.
+    \"\"\"
+    {BYTESWAP}
+
+#_ctia
+def convertToIntArray( v ):
+    \"\"\"Converts the given iterable of ints, v, to an array of signed 4-byte integers if it isn't one already.\"\"\"
+    if isinstance( v, array ) and v.typecode == "{SIGNED_INT_TYPE}":
+        return v
+    return array( "{SIGNED_INT_TYPE}", v )
+
+def assertIntArray( a ):
+    \"\"\"Asserts that a is an array of signed 4-byte integers. Raises TypeError if it is not.\"\"\"
+    if type( a ) is not array:
+        raise TypeError( "Wrong type for values: expected array(\\"{SIGNED_INT_TYPE}\\")" )
+    if a.typecode != SIGNED_INT_TYPE:
+        raise TypeError( "Wrong array typecode for values: expected \\"{SIGNED_INT_TYPE}\\", got \\"{{}}\\"".format( a.typecode ) )
+
+def s4array( *args ):
+    \"\"\"
+    s4array([initializer]) -> array("{SIGNED_INT_TYPE}" [, initializer])
+
+    Returns an array.array of signed 4-byte integers, optionally initialized with a given initializer.
+    \"\"\"
+    return array( "{SIGNED_INT_TYPE}", *args )
+
+def u4array( *args ):
+    \"\"\"
+    u4array([initializer]) -> array("{UNSIGNED_INT_TYPE}" [, initializer])
+
+    Returns an array.array of unsigned 4-byte integers, optionally initialized with a given initializer.
+    \"\"\"
+    return array( "{UNSIGNED_INT_TYPE}", *args )
+""".format( SIGNED_INT_TYPE=SIGNED_INT_TYPE, UNSIGNED_INT_TYPE=UNSIGNED_INT_TYPE, BYTESWAP="a.byteswap()" if sys.byteorder == "little" else "" )
+)
