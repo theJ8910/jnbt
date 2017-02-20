@@ -776,43 +776,74 @@ class NBTDocument( TAG_Compound ):
         else:
             raise TypeError( "__init__() takes at most 2 positional arguments but {:d} were given".format( l ) )
 
+        self.target      = None
+        self.compression = None
+
+    def setWriteArguments( self, target, compression ):
+        """
+        Sets the arguments provided to the write() method when called without arguments.
+        For documents returned by jnbt.read(), these arguments are set automatically.
+        """
+        self.target      = target
+        self.compression = compression
+
+    def getWriteArguments( self ):
+        """
+        Returns the arugments provided to the write() method when called without arguments.
+        Returns (None, None) if these argments are not set.
+        """
+        return self.target, self.compression
+
     def print( self, maxdepth=math.inf, maxlen=math.inf, fn=print ):
         self._p( "(\"{}\")".format( self.name ), 0, maxdepth, maxlen, fn )
 
-    def write( self, target, compression="gzip" ):
+    def _writeImpl( self, target, compression="gzip" ):
         """
-        Writes an NBTDocument to a file.
-        target can be the path of the file to write to (as a str), or a writable file-like object.
-        compression is an optional parameter that can be None, "gzip", or "zlib". Defaults to "gzip".
+        Implementation of NBTDocument#write() that takes a fixed number of parameters.
+        See help( NBTDocument.write ) for further documentation.
         """
-        file = None
+        zlib = False
         if isinstance( target, str ):
             if compression is None:
-                target = open( target, "wb" )
+                file = open( target, "wb" )
             elif compression == "gzip":
-                target = gzip.open( target, "wb" )
+                file = gzip.open( target, "wb" )
             #For zlib compressed files we write raw NBT to a BytesIO, then later zlib compress this data to the target file.
             elif compression == "zlib":
-                file = target
-                target = BytesIO()
+                file = BytesIO()
+                zlib = True
             else:
                 raise ValueError( "Unknown compression type \"{}\".".format( compression ) )
 
-            with target:
-                self._w( target )
+            with file:
+                self._w( file )
 
-            if file is not None:
-                with open( file, "wb" ) as file:
-                    file.write( zlib.compress( target.getbuffer() ) )
+            if zlib:
+                with open( target, "wb" ) as hardfile:
+                    hardfile.write( zlib.compress( file.getbuffer() ) )
         else:
-            if compression == "zlib":
-                file = target
-                target = BytesIO()
-            
             self._w( target )
 
-            if file is not None:
-                file.write( zlib.compress( target.getbuffer() ) )
+    def write( self, *args, **kwargs ):
+        """
+        document.write()
+        document.write( target, compression="gzip" )
+
+        Writes an NBTDocument to a file.
+        When called without arguments, writes changes to the document back to the file it was read from.
+        Specifically, calling write() without arguments is equivalent to calling write() with self.target and self.compression substituted for the target and compression parameters, respectively.
+
+        target can be the path of the file to write to (as a str), or a writable file-like object.
+        compression is an optional parameter that can be None, "gzip", or "zlib". Defaults to "gzip".
+            If target is a writable file-like object, this parameter is ignored; bytes will be written to the file as if compression were None.
+        """
+        la = len( args ) + len( kwargs )
+        if la == 0:
+            if self.target is None:
+                raise TypeError( "Unknown write target. Call doc.write() with arguments, or provide the write target in jnbt.read() or doc.setWriteArguments()." )
+            return self._writeImpl( self.target, self.compression )
+        else:
+            return self._writeImpl( *args, **kwargs )
 
     def _r( i ):
         name = _retn( i, TAG_COMPOUND )
@@ -827,7 +858,7 @@ class NBTDocument( TAG_Compound ):
 
     def __repr__( self ):
         parts = []
-        name, other = self.name, super().__repr__()[18:-1]
+        name, other = self.name, super().__repr__()[12:-1]
         if len( name ) > 0:
             parts.append( "'{}'".format( name ) )
         if len( other ) > 0:
@@ -856,28 +887,37 @@ _TAGCLASS = (
     TAG_Int_Array   #TAG_INT_ARRAY
 )
 
-def read( source, compression="gzip" ):
+def read( source, compression="gzip", target=None ):
     """
     Parses an NBT file from source and returns an NBTDocument.
     Returns None if source is empty.
 
     source can be the path of the file to read from (as a str), or a readable file-like object containing uncompressed NBT data.
     compression is an optional parameter that can be None, "gzip", or "zlib". Defaults to "gzip".
+    target is an optional parameter that determines the file that will be written to when calling doc.write() on the returned document without arguments.
+        This parameter can be None, the path of a file to write to (as a str), or a writable file-like object. Defaults to None.
+        If target is None, jnbt can determine the write target automatically from the given source, but only if source is a str or an object with a "name" attribute, such as a file.
+        Otherwise, the write target will be set to None.
     """
     if isinstance( source, str ):
         if compression is None:
-            source = open( source, "rb" )
+            file = open( source, "rb" )
         elif compression == "gzip":
-            source = gzip.open( source, "rb" )
+            file = gzip.open( source, "rb" )
         elif compression == "zlib":
-            with open( source, "rb" ) as file:
-                source = BytesIO( zlib.decompress( file.read() ) )
+            with open( source, "rb" ) as hardfile:
+                file = BytesIO( zlib.decompress( hardfile.read() ) )
         else:
             raise ValueError( "Unknown compression type \"{}\".".format( compression ) )
-        with source:
-            return NBTDocument._r( source )
+        if target is None:
+            target = source
+        with file:
+            doc = NBTDocument._r( file )
+            doc.setWriteArguments( target, compression )
+            return doc
     else:
-        if compression == "zlib":
-            with BytesIO( zlib.decompress( source.read() ) ) as source:
-                NBTDocument._r( source )
-        return NBTDocument._r( source )
+        doc = NBTDocument._r( source )
+        if target is None:
+            target = getattr( source, "name", None )
+        doc.setWriteArguments( target, None )
+        return doc

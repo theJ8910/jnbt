@@ -72,7 +72,7 @@ class WrongTagError( NBTFormatError ):
     According to the NBT specification, TAG_Lists are only permitted to contain tags of a single type.
     """
     def __str__( self ):
-        return "Expected {}, but received {} instead.".format( describeTag( args[0] ), describeTag( args[1] ) )
+        return "Expected {}, but received {} instead.".format( describeTag( self.args[0] ), describeTag( self.args[1] ) )
 
 class DuplicateNameError( NBTFormatError ):
     """
