@@ -1,4 +1,5 @@
 import sys
+import math
 from struct import calcsize, Struct
 from array import array
 
@@ -48,6 +49,12 @@ elif calcsize( "l" ) == 4:
     UNSIGNED_INT_TYPE = "L"
 else:
     raise OSError( "No 4-byte datatype available." )
+
+#math.inf only exists in Python 3.5+
+try:
+    INF = math.inf
+except AttributeError:
+    INF = float( "inf" )
 
 #Structs
 _NT = Struct( ">bh"                   )     #Named tag info

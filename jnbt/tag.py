@@ -5,7 +5,6 @@ NBTDocument, several TAG_* classes and the read() function are implemented here.
 """
 import gzip
 import zlib
-import math
 import itertools
 
 from collections import OrderedDict
@@ -15,6 +14,7 @@ from io import BytesIO, StringIO
 
 from .shared import (
     NBTFormatError, WrongTagError, DuplicateNameError, UnknownTagTypeError, OutOfBoundsError,
+    INF,
     TAG_END, TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG, TAG_FLOAT, TAG_DOUBLE, TAG_BYTE_ARRAY, TAG_STRING, TAG_LIST, TAG_COMPOUND, TAG_INT_ARRAY,
     TAG_NAMES, TAG_COUNT, SIGNED_INT_TYPE
 )
@@ -34,7 +34,6 @@ from .shared import readArrayHeader     as _rah,  read                as _r,    
 
 from .shared import tagListString       as _tls
 from .shared import assertValidTagType  as _avtt, byteswapMaybe       as _bm
-
 
 def _assertTagList( i, t ):
     """Assert that all entries in the given iterable, i, are TAG_* objects with the given tagType, t."""
@@ -132,7 +131,7 @@ class _BaseTag:
 
     __slots__ = ()
 
-    def print( self, maxdepth=math.inf, maxlen=math.inf, fn=print ):
+    def print( self, maxdepth=INF, maxlen=INF, fn=print ):
         """
         Recursively pretty-print the tag and its children.
         maxdepth is the maximum recursive depth to pretty-print.
@@ -167,7 +166,7 @@ class _BaseTag:
         }
         """
         return self._p( "", 0, maxdepth, maxlen, fn )
-    def sprint( self, maxdepth=math.inf, maxlen=math.inf ):
+    def sprint( self, maxdepth=INF, maxlen=INF ):
         """
         Recursively pretty-print the tag and its children to a string and return it.
         See help( tag.print ) for a description of maxdepth and maxlen and example usage.
@@ -794,7 +793,7 @@ class NBTDocument( TAG_Compound ):
         """
         return self.target, self.compression
 
-    def print( self, maxdepth=math.inf, maxlen=math.inf, fn=print ):
+    def print( self, maxdepth=INF, maxlen=INF, fn=print ):
         self._p( "(\"{}\")".format( self.name ), 0, maxdepth, maxlen, fn )
 
     def _writeImpl( self, target, compression="gzip" ):

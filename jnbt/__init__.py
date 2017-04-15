@@ -5,7 +5,7 @@ It features both DOM and SAX-style parsing and writing, as well as utilities to 
 Modifying an NBT file:
     doc = jnbt.read( "filename.nbt" )
     
-    for tag in doc["inventory"]:
+    for tag in doc["Inventory"]:
         if tag["id"] == 501:
             tag["id"] = 1024
 
@@ -20,18 +20,6 @@ Finding iron ore in the overworld:
         if block.id == 15:
             print( block.x, block.y, block.z )
 """
-
-#Useful links:
-#    http://web.archive.org/web/20110723210920/http://www.minecraft.net/docs/NBT.txt
-#    http://minecraft.gamepedia.com/NBT_Format
-#    http://wiki.vg/Nbt
-#
-#    http://minecraft.gamepedia.com/Level_Format
-#    http://minecraft.gamepedia.com/Region_file_format
-#    http://minecraft.gamepedia.com/Anvil_file_format
-#    http://minecraft.gamepedia.com/Chunk_format
-#    http://wiki.vg/Region_Files
-#    http://wiki.vg/Map_Format
 
 #NBT Tag Types, Exceptions
 from .shared import (
