@@ -1,3 +1,4 @@
+import os
 import sys
 import math
 from struct import calcsize, Struct
@@ -55,6 +56,36 @@ try:
     INF = math.inf
 except AttributeError:
     INF = float( "inf" )
+
+#os.scandir/os.DirEntry only exists in Python 3.5+
+try:
+    scandir = os.scandir
+except AttributeError:
+    #Implement the same interface as os.scandir() but with pre-Python 3.5 stuff
+    class _DirEntryShim:
+        name = ""
+        path = ""
+        def inode( self ):
+            return os.lstat( self.path ).st_ino
+        def is_dir( self ):
+            return os.path.isdir( self.path )
+        def is_file( self ):
+            return os.path.isfile( self.path )
+        def is_symlink( self ):
+            return os.path.islink( self.path )
+        def stat( self, follow_symlinks=True ):
+            if follow_symlinks:
+                return os.stat( self.path )
+            else:
+                return os.lstat( self.path )
+    def listdir_to_scandir_shim( path="." ):
+        entries = os.listdir( path )
+        de = _DirEntryShim()
+        for entry in entries:
+            de.name = entry
+            de.path = os.path.join( path, entry )
+            yield de
+    scandir = listdir_to_scandir_shim
 
 #Structs
 _NT = Struct( ">bh"                   )     #Named tag info

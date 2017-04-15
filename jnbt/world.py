@@ -14,7 +14,7 @@ from io import BytesIO
 from collections import OrderedDict
 
 from . import tag
-from .shared import read as _r, readUnsignedByte as _rub, readUnsignedInt as _rui, readUnsignedInts as _ruis
+from .shared import scandir, read as _r, readUnsignedByte as _rub, readUnsignedInt as _rui, readUnsignedInts as _ruis
 
 #Regular expressions that matches Region / Anvil filenames; i.e. filenames of the form "r.{x}.{z}.mc(a|r)" (where x and z are region coordinates)
 MCR_RE = re.compile( "^r\.(-?\d+)\.(-?\d+)\.mcr$", re.IGNORECASE )
@@ -398,7 +398,7 @@ class World:
 
         yield Dimension( 0, path, self )
 
-        for entry in os.scandir( path ):
+        for entry in scandir( path ):
             if entry.is_dir():
                 name = entry.name.upper()
                 if name.startswith( "DIM" ):
@@ -436,7 +436,7 @@ class World:
         path = os.path.join( self.path, "playerdata" )
         if not os.path.isdir( path ):
             return
-        for entry in os.scandir( path ):
+        for entry in scandir( path ):
             match = PD_RE.fullmatch( entry.name )
             if match:
                 yield Player( "".join( match.groups() ), tag.read( entry.path ) )
@@ -571,7 +571,7 @@ class Dimension:
         path = os.path.join( self.path, "region" )
         if not os.path.isdir( path ):
             return
-        for entry in os.scandir( path ):
+        for entry in scandir( path ):
             if entry.is_file():
                 match = MCA_RE.fullmatch( entry.name )
                 if match:
@@ -1142,10 +1142,10 @@ class Player:
     nbt is the player's save file.
     """
     slots = ( "uuid", "nbt", "_name" )
-    def __init__( self, uuid, name=None, nbt=None ):
+    def __init__( self, uuid, nbt ):
         self.uuid  = uuid
         self.nbt   = nbt
-        self._name = name
+        self._name = None
 
     def getName( self ):
         """
