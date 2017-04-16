@@ -1,7 +1,7 @@
 from collections import deque
 from collections import OrderedDict
 
-from .shared import TAG_NAMES, tagNameString as _tns, tagListString as _tls, s4array
+from jnbt.shared import TAG_NAMES, tagNameString as _tns, tagListString as _tls, s4array
 
 class AbstractNBTHandler:
     """

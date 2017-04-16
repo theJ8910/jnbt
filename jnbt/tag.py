@@ -12,7 +12,7 @@ from array import array
 from io import BytesIO, StringIO
 
 
-from .shared import (
+from jnbt.shared import (
     NBTFormatError, WrongTagError, DuplicateNameError, UnknownTagTypeError, OutOfBoundsError,
     INF,
     TAG_END, TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG, TAG_FLOAT, TAG_DOUBLE, TAG_BYTE_ARRAY, TAG_STRING, TAG_LIST, TAG_COMPOUND, TAG_INT_ARRAY,
@@ -20,20 +20,20 @@ from .shared import (
 )
 
 #import with parentheses doesn't support renaming
-from .shared import writeTagName        as _wtn,  writeByte           as _wb,   writeShort          as _ws
-from .shared import writeInt            as _wi,   writeLong           as _wl,   writeFloat          as _wf
-from .shared import writeDouble         as _wd,   writeString         as _wst,  writeTagListHeader  as _wlh
+from jnbt.shared import writeTagName        as _wtn,  writeByte           as _wb,   writeShort          as _ws
+from jnbt.shared import writeInt            as _wi,   writeLong           as _wl,   writeFloat          as _wf
+from jnbt.shared import writeDouble         as _wd,   writeString         as _wst,  writeTagListHeader  as _wlh
 
-from .shared import writeByteArray      as _wba,  writeIntArray       as _wia
+from jnbt.shared import writeByteArray      as _wba,  writeIntArray       as _wia
 
-from .shared import readTagName         as _rtn,  readByte            as _rb,   readShort           as _rs
-from .shared import readInt             as _ri,   readLong            as _rl,   readFloat           as _rf
-from .shared import readDouble          as _rd,   readString          as _rst,  readTagListHeader   as _rlh
+from jnbt.shared import readTagName         as _rtn,  readByte            as _rb,   readShort           as _rs
+from jnbt.shared import readInt             as _ri,   readLong            as _rl,   readFloat           as _rf
+from jnbt.shared import readDouble          as _rd,   readString          as _rst,  readTagListHeader   as _rlh
 
-from .shared import readArrayHeader     as _rah,  read                as _r,    readExpectedTagName as _retn
+from jnbt.shared import readArrayHeader     as _rah,  read                as _r,    readExpectedTagName as _retn
 
-from .shared import tagListString       as _tls
-from .shared import assertValidTagType  as _avtt, byteswapMaybe       as _bm
+from jnbt.shared import tagListString       as _tls
+from jnbt.shared import assertValidTagType  as _avtt, byteswapMaybe       as _bm
 
 def _assertTagList( i, t ):
     """Assert that all entries in the given iterable, i, are TAG_* objects with the given tagType, t."""

@@ -1,4 +1,4 @@
-from .shared import (
+from jnbt.shared import (
     NBTFormatError, readInts as _ris,
     _NT, _TL, _B, _S, _I, _L, _F, _D,
     TAG_END, TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG, TAG_FLOAT, TAG_DOUBLE, TAG_BYTE_ARRAY, TAG_STRING, TAG_LIST, TAG_COMPOUND, TAG_INT_ARRAY,

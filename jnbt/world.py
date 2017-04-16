@@ -13,8 +13,8 @@ import zlib
 from io import BytesIO
 from collections import OrderedDict
 
-from . import tag
-from .shared import scandir, read as _r, readUnsignedByte as _rub, readUnsignedInt as _rui, readUnsignedInts as _ruis
+from jnbt import tag
+from jnbt.shared import scandir, read as _r, readUnsignedByte as _rub, readUnsignedInt as _rui, readUnsignedInts as _ruis
 
 #Regular expressions that matches Region / Anvil filenames; i.e. filenames of the form "r.{x}.{z}.mc(a|r)" (where x and z are region coordinates)
 MCR_RE = re.compile( "^r\.(-?\d+)\.(-?\d+)\.mcr$", re.IGNORECASE )
