@@ -6,20 +6,19 @@ from jnbt.shared import (
     WrongTagError, DuplicateNameError,
     #end
     TAG_END, TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG, TAG_FLOAT, TAG_DOUBLE, TAG_BYTE_ARRAY, TAG_STRING, TAG_LIST, TAG_COMPOUND, TAG_INT_ARRAY,
-    TAG_COUNT
+    TAG_COUNT,
+
+    writeTagName       as _wtn, writeByte      as _wb,  writeShort    as _ws,
+    writeInt           as _wi,  writeLong      as _wl,  writeFloat    as _wf,
+    writeDouble        as _wd,  writeByteArray as _wba, writeString   as _wst,
+    writeTagListHeader as _wlh, writeTagList   as _wlp, writeIntArray as _wia,
+    writeInts          as _wis,
+
+    convertToIntArray  as _ctia,
+    #if safe
+    assertValidTagType as _avtt,
+    #end
 )
-
-#import with parentheses doesn't support renaming
-from jnbt.shared import writeTagName       as _wtn, writeByte      as _wb,  writeShort    as _ws
-from jnbt.shared import writeInt           as _wi,  writeLong      as _wl,  writeFloat    as _wf
-from jnbt.shared import writeDouble        as _wd,  writeByteArray as _wba, writeString   as _wst
-from jnbt.shared import writeTagListHeader as _wlh, writeTagList   as _wlp, writeIntArray as _wia
-from jnbt.shared import writeInts          as _wis
-
-from jnbt.shared import convertToIntArray  as _ctia
-#if safe
-from jnbt.shared import assertValidTagType as _avtt
-#end
 
 class _NBTWriterBase:
     """

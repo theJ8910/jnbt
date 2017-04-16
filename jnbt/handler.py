@@ -1,7 +1,5 @@
-from collections import deque
-from collections import OrderedDict
-
-from jnbt.shared import TAG_NAMES, tagNameString as _tns, tagListString as _tls, s4array
+from jnbt.shared import TAG_NAMES, tagNameString as _tns, tagListString as _tls
+from jnbt.parse  import _StopParsingNBT
 
 class AbstractNBTHandler:
     """
@@ -145,6 +143,10 @@ class AbstractNBTHandler:
         Called when the end of a TAG_Int_Array is parsed.
         """
         pass
+
+    def stop( self ):
+        """Call this method if you want to stop parsing prematurely."""
+        raise _StopParsingNBT()
 
 class PrintNBTHandler( AbstractNBTHandler ):
     """

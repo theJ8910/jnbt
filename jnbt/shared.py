@@ -320,11 +320,19 @@ def writeString( v, o ):
 def readTagListHeader( i ):
     """
     Reads a TAG_List header.
+
     Returns a tuple ( tagType, length ).
     tagType is the numerical ID of the tags contained in this list.
     length is how many tags are stored in the list.
+
+    Raises UnknownTagTypeError if tagType is unknown.
+    Raises OutOfBoundsError if the length of the list is negative.
     """
-    return _TL.unpack( read( i, 5 ) )
+    p = _TL.unpack( read( i, 5 ) )
+    assertValidTagType( p[0] )
+    if p[1] < 0:
+        raise OutOfBoundsError( 0, 2147483647 );
+    return p
 
 #_wlh
 def writeTagListHeader( t, l, o ):
@@ -354,7 +362,7 @@ def readArrayHeader( i ):
     """
     l = _I.unpack( read( i, 4 ) )[0]
     if l < 0:
-        raise OutOfBoundsError( l, 0, -2147483648, 2147483647 )
+        raise OutOfBoundsError( l, 0, 2147483647 )
     return l
 
 #_rub
