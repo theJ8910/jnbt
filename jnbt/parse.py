@@ -4,7 +4,6 @@ from .shared import (
     TAG_END, TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG, TAG_FLOAT, TAG_DOUBLE, TAG_BYTE_ARRAY, TAG_STRING, TAG_LIST, TAG_COMPOUND, TAG_INT_ARRAY,
     TAG_COUNT
 )
-from .handler import TreeNBTHandler
 
 def _read( input, n ):
     """
@@ -15,18 +14,6 @@ def _read( input, n ):
     if len( b ) != n:
         raise EOFError( "End of file reached prematurely!" )
     return b
-
-def treeparse( input ):
-    """
-    Provides DOM-like NBT parsing.
-
-    Parses all data from the given input source, input. Builds and returns a complete tree of NBT tags.
-
-    input is expected to be a file-like object containing uncompressed NBT data.
-    """
-    th = TreeNBTHandler()
-    parse( input, th )
-    return th.getTree()
 
 def parse( input, handler ):
     """

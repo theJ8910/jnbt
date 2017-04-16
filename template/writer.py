@@ -2,7 +2,9 @@ from collections import deque
 
 from jnbt.shared import (
     NBTFormatError, describeTag,
+    #if safe
     WrongTagError, DuplicateNameError,
+    #end
     TAG_END, TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG, TAG_FLOAT, TAG_DOUBLE, TAG_BYTE_ARRAY, TAG_STRING, TAG_LIST, TAG_COMPOUND, TAG_INT_ARRAY,
     TAG_COUNT
 )
@@ -15,7 +17,9 @@ from jnbt.shared import writeTagListHeader as _wlh, writeTagList   as _wlp, writ
 from jnbt.shared import writeInts          as _wis
 
 from jnbt.shared import convertToIntArray  as _ctia
+#if safe
 from jnbt.shared import assertValidTagType as _avtt
+#end
 
 class _NBTWriterBase:
     """
@@ -29,6 +33,7 @@ class _NBTWriterBase:
         """
         self._o = output
         self._s = deque()
+        #if safe
         #A boolean indicating if the root TAG_Compound has been started yet.
         self._r = False
 
@@ -39,6 +44,8 @@ class _NBTWriterBase:
         #For TAG_List, the tag type of the list.
         #For TAG_Compound, the set of names that have been written so far.
         self._c = None
+        #end
+    #if safe
     def _pushC( self ):
         """Push a new TAG_Compound context to the stack."""
         self._s.append( ( self.__class__, self._c ) )
@@ -63,6 +70,24 @@ class _NBTWriterBase:
         self.__class__ = _NBTWriterByteArray
         self._a = 0
         self._b = b
+    #else
+    def _pushC( self ):
+        """Push a new TAG_Compound context to the stack."""
+        self._s.append( self.__class__ )
+        self.__class__ = _NBTWriterCompound
+    def _pushL( self ):
+        """Push a new TAG_List context to the stack."""
+        self._s.append( self.__class__ )
+        self.__class__ = _NBTWriterList
+    def _pushI( self ):
+        """Push a new TAG_Int_Array context to the stack."""
+        self._s.append( self.__class__ )
+        self.__class__ = _NBTWriterIntArray
+    def _pushB( self ):
+        """Push a new TAG_Byte_Array context to the stack."""
+        self._s.append( self.__class__ )
+        self.__class__ = _NBTWriterByteArray
+    #end
 
     def __enter__( self ):
         return self
@@ -292,6 +317,7 @@ class _NBTWriterCompound( _NBTWriterBase ):
     Context while writing a (non-root) TAG_Compound.
     Methods in this class take a name as a first argument.
     """
+    #if safe
     def _ac( self, name ):
         """
         Asserts that a tag with this name has not already been written.
@@ -302,104 +328,150 @@ class _NBTWriterCompound( _NBTWriterBase ):
         if name in c:
             raise DuplicateNameError( name )
         c.add( name )
+    #end
     def byte( self, name, value ):
+        #if safe
         self._ac( name )
+        #end
         o = self._o
         _wtn( TAG_BYTE, name, o )
         _wb( value, o )
     def short( self, name, value ):
+        #if safe
         self._ac( name )
+        #end
         o = self._o
         _wtn( TAG_SHORT, name, o )
         _ws( value, o )
     def int( self, name, value ):
+        #if safe
         self._ac( name )
+        #end
         o = self._o
         _wtn( TAG_INT, name, o )
         _wi( value, o )
     def long( self, name, value ):
+        #if safe
         self._ac( name )
+        #end
         o = self._o
         _wtn( TAG_LONG, name, o )
         _wl( value, o )
     def float( self, name, value ):
+        #if safe
         self._ac( name )
+        #end
         o = self._o
         _wtn( TAG_FLOAT, name, o )
         _wf( value, o )
     def double( self, name, value ):
+        #if safe
         self._ac( name )
+        #end
         o = self._o
         _wtn( TAG_DOUBLE, name, o )
         _wd( value, o )
 
     def bytearray( self, name, values ):
+        #if safe
         self._ac( name )
+        #end
         o = self._o
         _wtn( TAG_BYTE_ARRAY, name, o )
         _wba( values, o )
     def startByteArray( self, name, length ):
+        #if safe
         if length < 0:
             raise NBTFormatError( "TAG_Byte_Array has negative length!" )
         self._ac( name )
+        #end
         o = self._o
         _wtn( TAG_BYTE_ARRAY, name, o )
         _wi( length, o )
+        #if safe
         self._pushB( length )
+        #else
+        self._pushB()
+        #end
 
     def string( self, name, value ):
+        #if safe
         self._ac( name )
+        #end
         o = self._o
         _wtn( TAG_STRING, name, o )
         _wst( value, o )
 
     def list( self, name, tagType, values ):
+        #if safe
         if tagType < 0 or tagType >= TAG_COUNT:
             raise NBTFormatError( "TAG_List given invalid tag type." )
         self._ac( name )
+        #end
         o = self._o
         _wtn( TAG_LIST, name, o )
         _wlp( tagType, values, o )
     def startList( self, name, tagType, length ):
+        #if safe
         if length < 0:
             raise NBTFormatError( "TAG_List has negative length!" )
         _avtt( tagType )
         self._ac( name )
+        #end
         o = self._o
         _wtn( TAG_LIST, name, o )
         _wlh( tagType, length, o )
+        #if safe
         self._pushL( tagType, length )
+        #else
+        self._pushL()
+        #end
 
     def startCompound( self, name ):
+        #if safe
         self._ac( name )
+        #end
         _wtn( TAG_COMPOUND, name, self._o )
         self._pushC()
 
     def endCompound( self ):
         self._o.write( b"\0" )
+        #if safe
         self.__class__, self._c = self._s.pop()
+        #else
+        self.__class__ = self._s.pop()
+        #end
 
     def intarray( self, name, values ):
+        #if safe
         self._ac( name )
+        #end
         values = _ctia( values )
         o = self._o
         _wtn( TAG_INT_ARRAY, name, o )
         _wia( values, o )
 
     def startIntArray( self, name, length ):
+        #if safe
         if length < 0:
             raise NBTFormatError( "TAG_Int_Array has negative length!" )
         self._ac( name )
+        #end
         o = self._o
         _wtn( TAG_INT_ARRAY, name, o )
         _wi( length, o )
+        #if safe
         self._pushI( length )
+        #else
+        self._pushI()
+        #end
 
 class _NBTWriterList( _NBTWriterBase ):
     """
     Context while writing a TAG_List.
     Methods in this class do not take names as arguments.
     """
+    #if safe
     def _al( self, tagType ):
         """
         Asserts that the tagType of the element matches the list's tagType.
@@ -413,106 +485,163 @@ class _NBTWriterList( _NBTWriterBase ):
         if a > b:
             raise NBTFormatError( "More than {:d} tags were written.".format( b ) )
         self._a = a
+    #end
     def byte( self, value ):
+        #if safe
         self._al( TAG_BYTE )
+        #end
         _wb( value, self._o )
     def short( self, value ):
+        #if safe
         self._al( TAG_SHORT )
+        #end
         _ws( value, self._o )
     def int( self, value ):
+        #if safe
         self._al( TAG_INT )
+        #end
         _wi( value, self._o )
     def long( self, value ):
+        #if safe
         self._al( TAG_LONG )
+        #end
         _wl( value, self._o )
     def float( self, value ):
+        #if safe
         self._al( TAG_FLOAT )
+        #end
         _wf( value, self._o )
     def double( self, value ):
+        #if safe
         self._al( TAG_DOUBLE )
+        #end
         _wd( value, self._o )
 
     def bytearray( self, values ):
+        #if safe
         self._al( TAG_BYTE_ARRAY )
+        #end
         _wba( values, self._o )
 
     def startByteArray( self, length ):
+        #if safe
         if length < 0:
             raise NBTFormatError( "TAG_Byte_Array has negative length!" )
         self._al( TAG_BYTE_ARRAY )
+        #end
         _wi( length, self._o )
+        #if safe
         self._pushB( length )
+        #else
+        self._pushB()
+        #end
     def string( self, value ):
+        #if safe
         self._al( TAG_STRING )
+        #end
         _wst( value, self._o )
     
     def list( self, tagType, values ):
+        #if safe
         if tagType < 0 or tagType >= TAG_COUNT:
             raise NBTFormatError( "TAG_List given invalid tag type." )
         self._al( TAG_LIST )
+        #end
         _wlp( tagType, values, self._o )
 
     def startList( self, tagType, length ):
+        #if safe
         if length < 0:
             raise NBTFormatError( "TAG_List has negative length!" )
         _avtt( tagType )
         self._al( TAG_LIST )
+        #end
         _wlh( tagType, length, self._o )
+        #if safe
         self._pushL( tagType, length )
+        #else
+        self._pushL()
+        #end
     def endList( self ):
+        #if safe
         a = self._a
         b = self._b
         if a != b:
             raise NBTFormatError( "Expected {:d} tags, but only {:d} tags were written.".format( b, a ) )
         self.__class__, self._a, self._b, self._c = self._s.pop()
+        #else
+        self.__class__ = self._s.pop()
+        #end
 
     def startCompound( self ):
+        #if safe
         self._al( TAG_COMPOUND )
+        #end
         self._pushC()
 
     def intarray( self, values ):
+        #if safe
         self._al( TAG_INT_ARRAY )
+        #end
         _wia( _ctia( values ), self._o )
 
     def startIntArray( self, length ):
+        #if safe
         if length < 0:
             raise NBTFormatError( "TAG_Int_Array has negative length!" )
         self._al( TAG_INT_ARRAY )
+        #end
         _wi( length, self._o )
+        #if safe
         self._pushI( length )
+        #else
+        self._pushI()
+        #end
 
 class _NBTWriterByteArray( _NBTWriterBase ):
     """Context while writing a TAG_Byte_Array."""
     def bytes( self, values ):
+        #if safe
         a = self._a + len( values )
         b = self._b
         if a > b:
             raise NBTFormatError( "More than {:d} bytes were written.".format( b ) )
         self._a = a
+        #end
         self._o.write( values )
     def endByteArray( self ):
+        #if safe
         a = self._a
         b = self._b
         if a != b:
             raise NBTFormatError( "Expected {:d} bytes, but only {:d} bytes were written.".format( b, a ) )
         self.__class__, self._a, self._b = self._s.pop()
+        #else
+        self.__class__ = self._s.pop()
+        #end
 
 class _NBTWriterIntArray( _NBTWriterBase ):
     """Context while writing a TAG_Int_Array."""
     def ints( self, values ):
+        #if safe
         a = self._a + len( values )
         b = self._b
         if a > b:
             raise NBTFormatError( "More than {:d} ints were written.".format( b ) )
         self._a = a
+        #end
         _wis( _ctia( values ), self._o )
 
     def endIntArray( self ):
+        #if safe
         a = self._a
         b = self._b
         if a != b:
             raise NBTFormatError( "Expected {:d} ints, but only {:d} ints were written.".format( b, a ) )
         self.__class__, self._a, self._b = self._s.pop()
+        #else
+        self.__class__ = self._s.pop()
+        #end
 
 class _NBTWriterRootCompound( _NBTWriterCompound ):
     """Context while writing the root TAG_Compound."""
@@ -547,9 +676,13 @@ class NBTWriter( _NBTWriterBase ):
             writer.end()
     """
     def start( self, name="" ):
+        #if safe
         if self._r is True:
             raise NBTFormatError( "The root TAG_Compound has already been created." )
         self._r = True
+        #end
         _wtn( TAG_COMPOUND, name, self._o )
         self.__class__ = _NBTWriterRootCompound
+        #if safe
         self._c = set()
+        #end

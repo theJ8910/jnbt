@@ -63,7 +63,7 @@ jnbt's SAX-style interface reads/writes NBT documents in a streaming fashion, po
 
 Write NBT to a file without building a tree in memory:
 ```python
-with jnbt.SafeNBTWriter( gzip.open( "somefile.nbt", "wb" ) ) as writer:
+with jnbt.NBTWriter( gzip.open( "somefile.nbt", "wb" ) ) as writer:
     writer.start()
     
     writer.byte( "my_byte", 10 )
