@@ -1,4 +1,9 @@
+import gzip
+import zlib
+
 from collections import deque
+from io import BytesIO
+from types import MethodType
 
 from jnbt.shared import (
     NBTFormatError, describeTag,
@@ -15,6 +20,37 @@ from jnbt.shared import (
     convertToIntArray  as _ctia,
     assertValidTagType as _avtt,
 )
+
+def writer( target, compression="gzip" ):
+    """
+    Returns an NBTWriter that writes to the file indicated by target.
+
+    target can be the path of the file to write to (as a str), or a writable file-like object.
+    compression is an optional parameter that can be None, "gzip", or "zlib". Defaults to "gzip".
+        If target is a writable file-like object, this parameter is ignored; bytes will be written to the file as if compression were None.
+    """
+    if isinstance( target, str ):
+        close = None
+        if compression is None:
+            file = open( target, "wb" )
+        elif compression == "gzip":
+            file = gzip.open( target, "wb" )
+        #For zlib compressed files we write raw NBT to a BytesIO, then later zlib compress this data to the target file.
+        elif compression == "zlib":
+            file = BytesIO()
+            def _close_finalize_zlib( self ):
+                with open( target, "wb" ) as hardfile:
+                    hardfile.write( zlib.compress( file.getbuffer() ) )
+                file.close()
+            close = _close_finalize_zlib
+        else:
+            raise ValueError( "Unknown compression type \"{}\".".format( compression ) )
+        w = NBTWriter( file )
+        if close is not None:
+            w.close = MethodType( close, w )
+    else:
+        w = NBTWriter( target )
+    return w
 
 class _NBTWriterBase:
     """
@@ -38,6 +74,8 @@ class _NBTWriterBase:
         #For TAG_List, the tag type of the list.
         #For TAG_Compound, the set of names that have been written so far.
         self._c = None
+    def close( self ):
+        self._o.close()
     def _pushC( self ):
         """Push a new TAG_Compound context to the stack."""
         self._s.append( ( self.__class__, self._c ) )
@@ -68,7 +106,7 @@ class _NBTWriterBase:
 
     def __exit__( self, exc_type, exc_value, traceback ):
         """Automatically closes the writable file-like object after exiting a with block."""
-        self._o.close()
+        self.close()
 
     #Default implementations for NBTWriter methods.
     #These raise NBTFormatErrors to indicate that calling these methods in the current context is inappropriate.
@@ -338,8 +376,8 @@ class _NBTWriterCompound( _NBTWriterBase ):
         _wtn( TAG_BYTE_ARRAY, name, o )
         _wba( values, o )
     def startByteArray( self, name, length ):
-        if length < 0:
-            raise NBTFormatError( "TAG_Byte_Array has negative length!" )
+        if length < 0 or length > 2147483647:
+            raise OutOfBoundsError( length, 0, 2147483647 )
         self._ac( name )
         o = self._o
         _wtn( TAG_BYTE_ARRAY, name, o )
@@ -353,15 +391,14 @@ class _NBTWriterCompound( _NBTWriterBase ):
         _wst( value, o )
 
     def list( self, name, tagType, values ):
-        if tagType < 0 or tagType >= TAG_COUNT:
-            raise NBTFormatError( "TAG_List given invalid tag type." )
+        _avtt( tagType )
         self._ac( name )
         o = self._o
         _wtn( TAG_LIST, name, o )
         _wlp( tagType, values, o )
     def startList( self, name, tagType, length ):
-        if length < 0:
-            raise NBTFormatError( "TAG_List has negative length!" )
+        if length < 0 or length > 2147483647:
+            raise OutOfBoundsError( length, 0, 2147483647 )
         _avtt( tagType )
         self._ac( name )
         o = self._o
@@ -386,8 +423,8 @@ class _NBTWriterCompound( _NBTWriterBase ):
         _wia( values, o )
 
     def startIntArray( self, name, length ):
-        if length < 0:
-            raise NBTFormatError( "TAG_Int_Array has negative length!" )
+        if length < 0 or length > 2147483647:
+            raise OutOfBoundsError( length, 0, 2147483647 )
         self._ac( name )
         o = self._o
         _wtn( TAG_INT_ARRAY, name, o )
@@ -436,8 +473,8 @@ class _NBTWriterList( _NBTWriterBase ):
         _wba( values, self._o )
 
     def startByteArray( self, length ):
-        if length < 0:
-            raise NBTFormatError( "TAG_Byte_Array has negative length!" )
+        if length < 0 or length > 2147483647:
+            raise OutOfBoundsError( length, 0, 2147483647 )
         self._al( TAG_BYTE_ARRAY )
         _wi( length, self._o )
         self._pushB( length )
@@ -446,14 +483,13 @@ class _NBTWriterList( _NBTWriterBase ):
         _wst( value, self._o )
     
     def list( self, tagType, values ):
-        if tagType < 0 or tagType >= TAG_COUNT:
-            raise NBTFormatError( "TAG_List given invalid tag type." )
+        _avtt( tagType )
         self._al( TAG_LIST )
         _wlp( tagType, values, self._o )
 
     def startList( self, tagType, length ):
-        if length < 0:
-            raise NBTFormatError( "TAG_List has negative length!" )
+        if length < 0 or length > 2147483647:
+            raise OutOfBoundsError( length, 0, 2147483647 )
         _avtt( tagType )
         self._al( TAG_LIST )
         _wlh( tagType, length, self._o )
@@ -474,8 +510,8 @@ class _NBTWriterList( _NBTWriterBase ):
         _wia( _ctia( values ), self._o )
 
     def startIntArray( self, length ):
-        if length < 0:
-            raise NBTFormatError( "TAG_Int_Array has negative length!" )
+        if length < 0 or length > 2147483647:
+            raise OutOfBoundsError( length, 0, 2147483647 )
         self._al( TAG_INT_ARRAY )
         _wi( length, self._o )
         self._pushI( length )

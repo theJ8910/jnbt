@@ -21,7 +21,7 @@ from jnbt.parse import parse
 from jnbt.handler import AbstractNBTHandler, PrintNBTHandler
 
 #NBT Writer
-from jnbt.writer import NBTWriter
+from jnbt.writer import writer, NBTWriter
 
 
 #Export everything we imported above
@@ -33,5 +33,5 @@ __all__ = [
     "DIM_NETHER", "DIM_OVERWORLD", "DIM_END", "World", "Dimension", "Region", "Chunk", "Block", "setMinecraftDir", "getMinecraftPath",
     "parse",
     "AbstractNBTHandler", "PrintNBTHandler",
-    "NBTWriter"
+    "writer", "NBTWriter"
 ]

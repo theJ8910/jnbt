@@ -5,7 +5,7 @@ import jnbt
 
 class TestJNBT( unittest.TestCase ):
     def test_NBTWriter( self ):
-        with jnbt.NBTWriter( open( "write_test.nbt", "wb" ) ) as w:
+        with jnbt.writer( "write_test.nbt", None ) as w:
             w.start( "Example!" )
             w.byte( "byte", -3 )
             w.short( "short", -500 )

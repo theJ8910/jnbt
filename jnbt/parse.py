@@ -1,3 +1,8 @@
+import gzip
+import zlib
+
+from io import BytesIO
+
 from jnbt.shared import (
     WrongTagError, OutOfBoundsError,
     read as _r, readInts as _ris, readString as _rst, readTagListHeader as _rlh, readArrayHeader as _rah, assertValidTagType as _avtt,
@@ -10,11 +15,11 @@ class _StopParsingNBT( Exception ):
     """This is exception is raised when an NBT Handler requests for the parser to stop."""
     pass
 
-def parse( input, handler ):
+def parse( source, handler, compression="gzip" ):
     """
     Provides SAX-like NBT parsing.
 
-    As NBT tags are parsed from input, parse calls the corresponding methods on the given handler (e.g. string(), short()).
+    As NBT tags are parsed from source, parse calls the corresponding methods on the given handler (e.g. string(), short()).
     These methods can then react to these tags being read as necessary.
 
     There are two primary advantages to parse() over read():
@@ -23,13 +28,35 @@ def parse( input, handler ):
 
     parse() does have disadvantages, however. One such disadvantage is that tasks that require data to be accessed out-of-order are typically harder / more awkward to program.
 
-    input is expected to be a readable file-like object containing uncompressed NBT data.
+    source can be the path of the file to read from (as a str), or a readable file-like object containing uncompressed NBT data.
     handler is expected to implement the methods defined in AbstractNBTHandler.
+    compression is an optional parameter that can be None, "gzip", or "zlib". Defaults to "gzip".
 
     If a handler method raises an exception, the exception will continue to propagate through parse().
 
     Returns True if the entire document was parsed.
     Returns False if the handler called .stop().
+    """
+    if isinstance( source, str ):
+        if compression is None:
+            file = open( source, "rb" )
+        elif compression == "gzip":
+            file = gzip.open( source, "rb" )
+        elif compression == "zlib":
+            with open( source, "rb" ) as hardfile:
+                file = BytesIO( zlib.decompress( hardfile.read() ) )
+        else:
+            raise ValueError( "Unknown compression type \"{}\".".format( compression ) )
+        with file:
+            return _parseImpl( file, handler )
+    else:
+        return _parseImpl( source, handler )
+
+def _parseImpl( input, handler ):
+    """
+    Implementation of parse().
+    input is expected to be a readable file-like object containing uncompressed NBT data.
+    See help( parse ) for further documentation.
     """
     #Read root tag type and name length at same time
     tagType, length = _NT.unpack( _r( input, 3 ) )
