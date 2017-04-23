@@ -5,8 +5,8 @@ import jnbt
 from jnbt.shared import s4array
 
 expected = (
-    ( "name",          jnbt.TAG_COMPOUND,   "Example!"    ),
     ( "start",                                            ),
+    ( "name",          jnbt.TAG_COMPOUND,   "Example!"    ),
     ( "startCompound",                                    ),
     ( "name",          jnbt.TAG_BYTE,       "byte"        ),
     ( "byte",          -3                                 ),
@@ -63,7 +63,7 @@ expected = (
     ( "endCompound",                                      ),
     ( "end",                                              )
 )
-class TestNBTHandler( jnbt.AbstractNBTHandler ):
+class TestNBTHandler( jnbt.NBTHandler ):
     def __init__( self ):
         self._i = 0
     def _check( self, *args ):

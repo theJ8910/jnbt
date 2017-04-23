@@ -1,9 +1,9 @@
 from jnbt.shared import TAG_NAMES, tagNameString as _tns, tagListString as _tls
 from jnbt.parse  import _StopParsingNBT
 
-class AbstractNBTHandler:
+class NBTHandler:
     """
-    Abstract NBT Event Handler.
+    Base NBT Event Handler.
     As an NBT file is parsed, functions in the given handler are called.
     This class provides default method implementations and documentation for handlers that inherit from it.
     """
@@ -148,7 +148,7 @@ class AbstractNBTHandler:
         """Call this method if you want to stop parsing prematurely."""
         raise _StopParsingNBT()
 
-class PrintNBTHandler( AbstractNBTHandler ):
+class PrintNBTHandler( NBTHandler ):
     """
     NBT Event Handler that prints a tree of NBT tags as they are fed through it.
     """

@@ -29,7 +29,7 @@ class Codegen( Command ):
 
 setup(
     name        = "jnbt",
-    version     = "1.0.9",
+    version     = "1.0.10",
     author      = "theJ89",
     description = "theJ89's NBT Library",
     packages    = [ "jnbt" ],

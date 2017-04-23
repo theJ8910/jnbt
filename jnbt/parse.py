@@ -29,7 +29,7 @@ def parse( source, handler, compression="gzip" ):
     parse() does have disadvantages, however. One such disadvantage is that tasks that require data to be accessed out-of-order are typically harder / more awkward to program.
 
     source can be the path of the file to read from (as a str), or a readable file-like object containing uncompressed NBT data.
-    handler is expected to implement the methods defined in AbstractNBTHandler.
+    handler is expected to implement the methods defined in NBTHandler.
     compression is an optional parameter that can be None, "gzip", or "zlib". Defaults to "gzip".
 
     If a handler method raises an exception, the exception will continue to propagate through parse().
@@ -69,8 +69,8 @@ def _parseImpl( input, handler ):
 
     #Call .name() on handler, passing tagType and length.
     try:
-        handler.name( tagType, _r( input, length ).decode() )
         handler.start()
+        handler.name( tagType, _r( input, length ).decode() )
         parseTagCompound( input, handler )
         handler.end()
     except _StopParsingNBT:

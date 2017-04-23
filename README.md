@@ -22,6 +22,8 @@ jnbt's DOM-style interface allows you to read, write, and build NBT documents, r
 
 Modifying a player's inventory:
 ```python
+import jnbt
+
 #Read the file
 doc = jnbt.read( "filename.nbt" )
 
@@ -36,6 +38,8 @@ doc.write()
 
 Building and saving an NBT document:
 ```python
+import jnbt
+
 doc = jnbt.NBTDocument()
 
 #Add a TAG_Byte to doc.
@@ -63,6 +67,8 @@ jnbt's SAX-style interface reads/writes NBT documents in a streaming fashion, po
 
 Write NBT to a file without building a tree in memory:
 ```python
+import jnbt
+
 with jnbt.writer( "somefile.nbt" ) as writer:
     writer.start()
     
@@ -85,7 +91,9 @@ with jnbt.writer( "somefile.nbt" ) as writer:
 
 Print strings as they're read:
 ```python
-class MyHandler( jnbt.AbstractNBTHandler ):
+import jnbt
+
+class MyHandler( jnbt.NBTHandler ):
     def string( self, value ):
         print( value )
 
@@ -100,6 +108,8 @@ Specifically, jnbt understands the structure of Minecraft world directories and 
 
 Finding iron ore in the overworld:
 ```python
+import jnbt
+
 path  = jnbt.getMinecraftPath( "saves", "New World" )
 world = jnbt.World( path )
 
