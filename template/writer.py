@@ -19,7 +19,7 @@ from jnbt.shared import (
     writeTagListHeader as _wlh, writeTagList   as _wlp, writeIntArray as _wia,
     writeInts          as _wis,
 
-    convertToIntArray  as _ctia,
+    convertCopyReturnIntArray as _ccria,
     #if safe
     assertValidTagType as _avtt,
     #end
@@ -43,9 +43,8 @@ def writer( target, compression="gzip" ):
         elif compression == "zlib":
             file = BytesIO()
             def _close_finalize_zlib( self ):
-                with open( target, "wb" ) as hardfile:
+                with file, open( target, "wb" ) as hardfile:
                     hardfile.write( zlib.compress( file.getbuffer() ) )
-                file.close()
             close = _close_finalize_zlib
         else:
             raise ValueError( "Unknown compression type \"{}\".".format( compression ) )
@@ -482,7 +481,7 @@ class _NBTWriterCompound( _NBTWriterBase ):
         #if safe
         self._ac( name )
         #end
-        values = _ctia( values )
+        values = _ccria( values )
         o = self._o
         _wtn( TAG_INT_ARRAY, name, o )
         _wia( values, o )
@@ -618,7 +617,7 @@ class _NBTWriterList( _NBTWriterBase ):
         #if safe
         self._al( TAG_INT_ARRAY )
         #end
-        _wia( _ctia( values ), self._o )
+        _wia( _ccria( values ), self._o )
 
     def startIntArray( self, length ):
         #if safe
@@ -665,7 +664,7 @@ class _NBTWriterIntArray( _NBTWriterBase ):
             raise NBTFormatError( "More than {:d} ints were written.".format( b ) )
         self._a = a
         #end
-        _wis( _ctia( values ), self._o )
+        _wis( _ccria( values ), self._o )
 
     def endIntArray( self ):
         #if safe

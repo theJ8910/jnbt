@@ -31,7 +31,7 @@ from jnbt.shared import (
     readArrayHeader     as _rah,  read              as _r,    readExpectedTagName as _retn,
 
     tagListString       as _tls,
-    assertValidTagType  as _avtt, byteswapMaybe     as _bm
+    assertValidTagType  as _avtt, byteswapMaybe     as _bm,   copyReturnIntArray  as _cria
 )
 
 def _assertTagList( i, t ):
@@ -393,7 +393,8 @@ class TAG_Int_Array( array, _BaseTag ):
             tag.fromfile( i, l )
             _bm( tag )
         return tag
-    _w = _wia
+    def _w( self, o ):
+        _wia( _cria( self ), o )
 
 class TAG_List( list, _BaseTag ):
     """
@@ -437,10 +438,6 @@ class TAG_List( list, _BaseTag ):
     #compound = (outside of class)
     intarray  = _makeTagAppender( "intarray",  TAG_Int_Array  )
 
-    # def __add__( self, value ):
-    #     return TAG_List( super().__add__( value ) )
-    # __radd__ = __add__
-
     def __iadd__( self, value ):
         if len( value ) == 0:
             return self
@@ -456,18 +453,6 @@ class TAG_List( list, _BaseTag ):
         super().__iadd__( self, value )
                 
         return self
-
-    # def __mul__( self, value ):
-    #     l = list.__new__( TAG_List )
-    #     if value != 0:
-    #         l.listTagType = self.listTagType
-    #         iadd = super( TAG_List, l ).__iadd__
-    #         for i in range( value ):
-    #             iadd( self )
-    #     else:
-    #         l.listTagType = TAG_END
-    #     return l
-    # __rmul__ = __mul__
 
     def __imul__( self, value ):
         if value == 0:
@@ -799,7 +784,7 @@ class NBTDocument( TAG_Compound ):
         Implementation of NBTDocument#write() that takes a fixed number of parameters.
         See help( NBTDocument.write ) for further documentation.
         """
-        zlib = False
+        is_zlib = False
         if isinstance( target, str ):
             if compression is None:
                 file = open( target, "wb" )
@@ -808,16 +793,15 @@ class NBTDocument( TAG_Compound ):
             #For zlib compressed files we write raw NBT to a BytesIO, then later zlib compress this data to the target file.
             elif compression == "zlib":
                 file = BytesIO()
-                zlib = True
+                is_zlib = True
             else:
                 raise ValueError( "Unknown compression type \"{}\".".format( compression ) )
 
             with file:
                 self._w( file )
-
-            if zlib:
-                with open( target, "wb" ) as hardfile:
-                    hardfile.write( zlib.compress( file.getbuffer() ) )
+                if is_zlib:
+                    with open( target, "wb" ) as hardfile:
+                        hardfile.write( zlib.compress( file.getbuffer() ) )
         else:
             self._w( target )
 

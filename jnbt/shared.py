@@ -426,6 +426,29 @@ def writeInts( a, o ):
     {BYTESWAP}
     a.tofile( o )
 
+#_cria
+def copyReturnIntArray( a ):
+    \"\"\"
+    Takes an array of signed 4-byte integers.
+    If this is a big-endian system, returns it.
+    If this is a little-endian system, returns a copy of it.
+    \"\"\"
+    {COPY}
+    return a
+#_ccria
+def convertCopyReturnIntArray( a ):
+    \"\"\"
+    Takes an iterable, a.
+    If a is an array of signed 4-byte integers:
+        ...and this is a big-endian system, returns the array.
+        ...and this is a little-endian system, returns a copy of the array.
+    Otherwise, converts a to a signed 4-byte integer array and returns the array.
+    \"\"\"
+    if isinstance( a, array ) and a.typecode == "{SIGNED_INT_TYPE}":
+        {COPY}
+        return a
+    else:
+        return array( "{SIGNED_INT_TYPE}", a )
 #_bm
 def byteswapMaybe( a ):
     \"\"\"
@@ -464,5 +487,10 @@ def u4array( *args ):
     Returns an array.array of unsigned 4-byte integers, optionally initialized with a given initializer.
     \"\"\"
     return array( "{UNSIGNED_INT_TYPE}", *args )
-""".format( SIGNED_INT_TYPE=SIGNED_INT_TYPE, UNSIGNED_INT_TYPE=UNSIGNED_INT_TYPE, BYTESWAP="a.byteswap()" if sys.byteorder == "little" else "" )
+""".format(
+        SIGNED_INT_TYPE  = SIGNED_INT_TYPE,
+        UNSIGNED_INT_TYPE= UNSIGNED_INT_TYPE,
+        BYTESWAP         = "a.byteswap()" if sys.byteorder == "little" else "",
+        COPY             = "a = array(\"" + SIGNED_INT_TYPE + "\", a)" if sys.byteorder == "little" else ""
+    )
 )
