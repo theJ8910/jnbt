@@ -74,9 +74,39 @@ def _makeTagSetter( methodname, tagclass ):
         {0:}(self, name, *args, **kwargs) -> {1:}
 
         Creates a new {1:}, passing the given arguments to the tag's constructor.
-        Sets self[name] to the new tag, then returns it.
+        Sets self[name] to the new tag, then returns the new tag.
         """.format( methodname, tagclass.__name__ )
     return setter
+
+def _makeTagSetDefault( methodname, tagclass ):
+    """
+    Returns a TAG_Compound method that functions similarly to setdefault(), but for a specific type of tag.
+    If the TAG_Compound contains an existing tag with that name and type, the function returns the existing tag.
+    If the TAG_Compound contains an existing tag with that name of a different type, the function raises a WrongTagError.
+    If the TAG_Compound does not contain an existing tag with that name, the function creates a new tag using the arguments provided to it.
+    """
+    def setdefault( self, *args, **kwargs ):
+        l = len( args )
+        if l < 1:
+            raise TypeError( "{} takes at least 1 positional argument but {:d} were given".format( methodname, l ) )
+        name, *args = args
+        t = self.get( name )
+        if t is None:
+            t = tagclass( *args, **kwargs )
+            self[name] = t
+        elif t.tagType != tagclass.tagType:
+            raise WrongTagError( tagclass.tagType, t.tagType );
+        return t
+    setdefault.__name__ = methodname
+    setdefault.__doc__ = \
+        """
+        {0:}(self, name, *args, **kwargs) -> {1:}
+
+        If a tag with the given name exists, returns the existing tag. Raises a WrongTagError if the existing tag isn't a {1:}.
+        Otherwise, creates a new {1:}, passing the given arguments to the tag's constructor,
+        sets self[name] to the new tag, then returns the new tag.
+        """.format( methodname, tagclass.__name__ )
+    return setdefault
 
 def _makeIntPrimitiveClass( classname, tt, vmin, vmax, r, w, **kwargs ):
     """Returns an NBT class that stores a primitive like byte, short, int, or long."""
@@ -658,6 +688,18 @@ class TAG_Compound( OrderedDict, _BaseTag ):
     #compound = (outside of class)
     intarray  = _makeTagSetter( "intarray",  TAG_Int_Array  )
 
+    setdefault_byte      = _makeTagSetDefault( "setdefault_byte",      TAG_Byte       )
+    setdefault_short     = _makeTagSetDefault( "setdefault_short",     TAG_Short      )
+    setdefault_int       = _makeTagSetDefault( "setdefault_int",       TAG_Int        )
+    setdefault_long      = _makeTagSetDefault( "setdefault_long",      TAG_Long       )
+    setdefault_float     = _makeTagSetDefault( "setdefault_float",     TAG_Float      )
+    setdefault_double    = _makeTagSetDefault( "setdefault_double",    TAG_Double     )
+    setdefault_bytearray = _makeTagSetDefault( "setdefault_bytearray", TAG_Byte_Array )
+    setdefault_string    = _makeTagSetDefault( "setdefault_string",    TAG_String     )
+    setdefault_list      = _makeTagSetDefault( "setdefault_list",      TAG_List       )
+    #setdefault_compound = (outside of class)
+    setdefault_intarray  = _makeTagSetDefault( "setdefault_intarray",  TAG_Int_Array  )
+
     def copy( self ):
         return TAG_Compound( self )
 
@@ -850,6 +892,7 @@ class NBTDocument( TAG_Compound ):
 TAG_List.list          = _makeTagAppender( "list",     TAG_List     )
 TAG_List.compound      = _makeTagAppender( "compound", TAG_Compound )
 TAG_Compound.compound  = _makeTagSetter(   "compound", TAG_Compound )
+TAG_Compound.setdefault_compound = _makeTagSetDefault( "setdefault_compound", TAG_Compound )
 
 #Tuple of tag classes indexed by tagType.
 #Do _TAGCLASS[tagType] to get the class for the tag with that tagType.
@@ -868,7 +911,7 @@ _TAGCLASS = (
     TAG_Int_Array   #TAG_INT_ARRAY
 )
 
-def read( source, compression="gzip", target=None ):
+def read( source, compression="gzip", target=None, create=False ):
     """
     Parses an NBT file from source and returns an NBTDocument.
     Returns None if source is empty.
@@ -879,23 +922,32 @@ def read( source, compression="gzip", target=None ):
         This parameter can be None, the path of a file to write to (as a str), or a writable file-like object. Defaults to None.
         If target is None, jnbt can determine the write target automatically from the given source, but only if source is a str or an object with a "name" attribute, such as a file.
         Otherwise, the write target will be set to None.
+    create is an optional parameter that determines what happens if source is a str and the file at that path cannot be found. If source is not a str, this parameter is ignored.
+        If create is True, returns a new blank NBTDocument(). Otherwise, raises FileNotFoundError.
+        Defaults to False.
     """
     if isinstance( source, str ):
-        if compression is None:
-            file = open( source, "rb" )
-        elif compression == "gzip":
-            file = gzip.open( source, "rb" )
-        elif compression == "zlib":
-            with open( source, "rb" ) as hardfile:
-                file = BytesIO( zlib.decompress( hardfile.read() ) )
-        else:
-            raise ValueError( "Unknown compression type \"{}\".".format( compression ) )
         if target is None:
             target = source
-        with file:
-            doc = NBTDocument._r( file )
-            doc.setWriteArguments( target, compression )
-            return doc
+        try:
+            if compression is None:
+                file = open( source, "rb" )
+            elif compression == "gzip":
+                file = gzip.open( source, "rb" )
+            elif compression == "zlib":
+                with open( source, "rb" ) as hardfile:
+                    file = BytesIO( zlib.decompress( hardfile.read() ) )
+            else:
+                raise ValueError( "Unknown compression type \"{}\".".format( compression ) )
+            with file:
+                doc = NBTDocument._r( file )
+        except FileNotFoundError:
+            if create is True:
+                doc = NBTDocument()
+            else:
+                raise
+        doc.setWriteArguments( target, compression )
+        return doc
     else:
         doc = NBTDocument._r( source )
         if target is None:
