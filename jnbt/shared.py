@@ -7,7 +7,7 @@ from array import array
 #Tag Types
 #A TAG_End is a nameless tag that terminates TAG_Compound and is the default tagType for an empty TAG_List.
 #It has no payload, and its named tag header is simply b"\0" because it is nameless (and therefore lacks any name-related entries).
-TAG_END        = 0  
+TAG_END        = 0
 TAG_BYTE       = 1  #A TAG_Byte payload stores a 1-byte signed integer.
 TAG_SHORT      = 2  #A TAG_Short payload stores a 2-byte big-endian signed integer.
 TAG_INT        = 3  #A TAG_Int payload stores a 4-byte big-endian signed integer.
@@ -111,6 +111,29 @@ class WrongTagError( NBTFormatError ):
     """
     def __str__( self ):
         return "Expected {}, but received {} instead.".format( describeTag( self.args[0] ), describeTag( self.args[1] ) )
+
+class ConversionError( NBTFormatError ):
+    """
+    ConversionError( value )
+
+    This exception is raised when failing to find a tag class to convert a non-tag value to.
+    This indicates the tag class to convert to couldn't be determined from the context, and there isn't a mapping from value's Python type to a tag class.
+    This often happens when value is an int or float; these types don't have tag mappings because there are multiple possible conversions.
+    In other words, the type to convert to would be ambiguous:
+        * int could be converted TAG_Byte, TAG_Short, TAG_Int, or TAG_Long.
+        * float could be converted TAG_Float or TAG_Double.
+    If you run into this problem, you can fix it by manually specifying the tag type you want to convert to.
+    e.g.
+        doc["myNumber"] = 5             #Raises an exception if myNumber doesn't exist. Instead of this...
+        doc["myNumber"] = TAG_Int( 5 )  #...try this
+        doc.int( "myNumber", 5 )        #...or better yet, this
+
+        ls = doc.list( "myList", [ 10, 11, 12 ] )            #Instead of this...
+        ls = doc.list( "myList", [ TAG_Int( 10 ), 11, 12 ] ) #...try this
+        ls = doc.list( "myList", [ 10, 11, 12 ], TAG_Int )   #...or better yet, this
+    """
+    def __str__( self ):
+        return "Unable to convert value of type \"{}\" to a tag.".format( self.args[0].__class__.__name__ )
 
 class DuplicateNameError( NBTFormatError ):
     """

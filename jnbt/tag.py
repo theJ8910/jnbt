@@ -11,9 +11,8 @@ from collections import OrderedDict
 from array import array
 from io import BytesIO, StringIO
 
-
 from jnbt.shared import (
-    NBTFormatError, WrongTagError, DuplicateNameError, OutOfBoundsError,
+    NBTFormatError, WrongTagError, ConversionError, DuplicateNameError, OutOfBoundsError,
     INF,
     TAG_END, TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG, TAG_FLOAT, TAG_DOUBLE, TAG_BYTE_ARRAY, TAG_STRING, TAG_LIST, TAG_COMPOUND, TAG_INT_ARRAY,
     TAG_NAMES, TAG_COUNT, SIGNED_INT_TYPE,
@@ -34,17 +33,105 @@ from jnbt.shared import (
     assertValidTagType  as _avtt, byteswapMaybe     as _bm,   copyReturnIntArray  as _cria
 )
 
-def _assertTagList( i, t ):
-    """Assert that all entries in the given iterable, i, are TAG_* objects with the given tagType, t."""
-    for v in i:
-        if v.tagType != t:
-            raise WrongTagError( t, v.tagType )
+#Base class methods called at various locations
+_int_repr       = int.__repr__
+_float_repr     = float.__repr__
+_bytearray_repr = bytearray.__repr__
+_str_add        = str.__add__
+_str_mul        = str.__mul__
+_str_repr       = str.__repr__
+_array_new      = array.__new__
+_array_repr     = array.__repr__
+_list_append    = list.append
+_list_clear     = list.clear
+_list_insert    = list.insert
+_list_pop       = list.pop
+_list_remove    = list.remove
+_list_init      = list.__init__
+_list_new       = list.__new__
+_list_setitem   = list.__setitem__
+_list_delitem   = list.__delitem__
+_list_iadd      = list.__iadd__
+_list_imul      = list.__imul__
+_list_repr      = list.__repr__
+_od_setitem     = OrderedDict.__setitem__
 
+#Generator that converts values in the given iterable, i, to a deduced tag class if necessary.
+#The tag class is deduced by inspecting the first value of the iterable, f, in this order:
+#   1. If f is a tag, f's class.
+#   2. The tag class mapped to f's Python type.
+#If the type cannot be deduced, raises a CoversionError.
+#Additionally, the deduced tag class's constructor may also raise exceptions during conversion.
+def _TL_init_v2t( i ):
+    #Note: If i is empty, next() raises StopIteration, gracefully stopping the generator.
+    i = iter( i )
+    f = next( i )
+
+    #First value is a tag.
+    if hasattr( f, "tagType" ):
+        c = f.__class__
+        yield f
+    #First value isn't a tag. Try converting the value to its corresponding tag class.
+    else:
+        c = _TAGMAP.get( f.__class__ )
+        #If this isn't possible, ConversionError is raised.
+        if c is None:
+            raise ConversionError( f )
+        yield c( f )
+
+    #Convert values in i to the chosen tag class.
+    yield from _TL_v2t( i, c )
+
+#Generator that converts values in the given iterable, i, to a deduced tag class if necessary.
+#This variant involves t, the tagType of elements stored in a TAG_List, in the type deduction process.
+#The tag class is deduced by inspecting the first value of the iterable, f, in this order:
+#   1. If f is a tag, f's class.
+#   2. If the TAG_List is non-empty, the class of tags stored by the list (e.g. TAG_Int).
+#   3. The tag class mapped to f's Python type.
+#If the type cannot be deduced, raises a CoversionError.
+#Additionally, the deduced tag class's constructor may also raise exceptions during conversion.
+def _TL_suggest_v2t( i, t ):
+    #Note: If i is empty, next() raises StopIteration, gracefully stopping the generator.
+    i = iter( i )
+    f = next( i )
+
+    #First value is a tag.
+    if hasattr( f, "tagType" ):
+        c = f.__class__
+        yield f
+    #First value isn't a tag. Try converting the value to the type of tags currently stored by the list, t.
+    elif t != TAG_END:
+        c = _TAGCLASS[t]
+        yield c(f)
+    #The list is empty. Try converting the value to its corresponding tag class.
+    else:
+        c = _TAGMAP.get( f.__class__ )
+        #If this isn't possible, ConversionError is raised.
+        if c is None:
+            raise ConversionError( f )
+        yield c(f)
+
+    #Convert values in i to the chosen tag class.
+    yield from _TL_v2t( i, c )
+
+#Generator that converts values in the given iterable, i, to the given tag class, c, if necessary.
+#Conversions are performed by doing c( v ), where v is the value to be converted.
+#Note: c's constructor may raise exceptions during conversion.
+def _TL_v2t( i, c ):
+    for v in i:
+        yield v if v.__class__ == c else c( v )
+
+#Returns a method that creates tags of the given class and appends them to a TAG_List.
 def _makeTagAppender( methodname, tagclass ):
-    """Returns a method that creates tags of the given class and appends them to a TAG_List."""
+    tt = tagclass.tagType
     def appender( self, *args, **kwargs ):
+        if len( self ) == 0:
+            self.listTagType = tt
+        elif tt != self.listTagType:
+            raise WrongTagError( self.listTagType, tt )
+
         t = tagclass( *args, **kwargs )
-        self.append( t )
+        _list_append( self, t )
         return t
     #Override appender.__name__ so help( tagclass ) shows this as "methodname( self, value)" instead of "methodname = appender( self, value )"
     appender.__name__ = methodname
@@ -55,8 +142,34 @@ def _makeTagAppender( methodname, tagclass ):
         """.format( tagclass.__name__ )
     return appender
 
+#Returns a method that creates tags of the given class and inserts them into a TAG_List.
+def _makeTagInserter( methodname, tagclass ):
+    tt = tagclass.tagType
+    def inserter( self, *args, **kwargs ):
+        l = len( args )
+        if l < 1:
+            raise TypeError( "{} takes at least 1 positional argument but {:d} were given".format( methodname, l ) )
+        pos, *args = args
+        if len( self ) == 0:
+            self.listTagType = tt
+        elif tt != self.listTagType:
+            raise WrongTagError( self.listTagType, tt )
+
+        t = tagclass( *args, **kwargs )
+        _list_insert( self, pos, t )
+        return t
+    inserter.__name__ = methodname
+    inserter.__doc__ = \
+        """
+        {0:}(self, pos, *args, **kwargs) -> {1:}
+
+        Inserts a new {1:} before the given index in this TAG_List, passing the given arguments to the tag's constructor.
+        Returns the new tag.
+        """.format( methodname, tagclass.__name__ )
+    return inserter
+
+#Returns a method that creates tags of the given class and adds or replaces a tag in a TAG_Compound with the given name.
 def _makeTagSetter( methodname, tagclass ):
-    """Returns a method that creates tags of the given class and adds or replaces a tag in a TAG_Compound with the given name."""
     def setter( self, *args, **kwargs ):
         #Note: We do this to force name to be a positional-only argument.
         #This allows us to pass a keyword argument called "name" to the constructor of whatever tag we're constructing.
@@ -64,8 +177,13 @@ def _makeTagSetter( methodname, tagclass ):
         if l < 1:
             raise TypeError( "{} takes at least 1 positional argument but {:d} were given".format( methodname, l ) )
         name, *args = args
+
+        if not isinstance( name, str ):
+            raise TypeError( "Attempted to set a non-str key on TAG_Compound." )
         t = tagclass( *args, **kwargs )
-        self[name] = t
+
+        #Since we know what the tagtype is, avoid extra cost of calling TAG_Compound.__setitem__. Use base class OrderedDict.__setitem__ instead.
+        _od_setitem( self, name, t )
         return t
     #Override setter.__name__ so help( tagclass ) shows this as "methodname( self, name, value)" instead of "methodname = setter( self, name, value )"
     setter.__name__ = methodname
@@ -78,13 +196,8 @@ def _makeTagSetter( methodname, tagclass ):
         """.format( methodname, tagclass.__name__ )
     return setter
 
+#Returns a TAG_Compound method that functions similarly to setdefault(), but for a specific type of tag.
 def _makeTagSetDefault( methodname, tagclass ):
-    """
-    Returns a TAG_Compound method that functions similarly to setdefault(), but for a specific type of tag.
-    If the TAG_Compound contains an existing tag with that name and type, the function returns the existing tag.
-    If the TAG_Compound contains an existing tag with that name of a different type, the function raises a WrongTagError.
-    If the TAG_Compound does not contain an existing tag with that name, the function creates a new tag using the arguments provided to it.
-    """
     def setdefault( self, *args, **kwargs ):
         l = len( args )
         if l < 1:
@@ -92,8 +205,10 @@ def _makeTagSetDefault( methodname, tagclass ):
         name, *args = args
         t = self.get( name )
         if t is None:
+            if not isinstance( name, str ):
+                raise TypeError( "Attempted to set a non-str key on TAG_Compound." )
             t = tagclass( *args, **kwargs )
-            self[name] = t
+            _od_setitem( self, name, t )
         elif t.tagType != tagclass.tagType:
             raise WrongTagError( tagclass.tagType, t.tagType );
         return t
@@ -108,9 +223,14 @@ def _makeTagSetDefault( methodname, tagclass ):
         """.format( methodname, tagclass.__name__ )
     return setdefault
 
+#Returns an NBT class that stores a primitive like byte, short, int, or long.
 def _makeIntPrimitiveClass( classname, tt, vmin, vmax, r, w, **kwargs ):
-    """Returns an NBT class that stores a primitive like byte, short, int, or long."""
     class _IntPrimitiveTag( _BaseIntTag ):
+        def __init__( self, value=None ):
+            #Note: self is set by int's __new__ prior to calling __init__.
+            #self is guaranteed to be an int, unlike value. The only reason the value parameter is here is so __init__ won't raise errors.
+            if self < vmin or self > vmax:
+                raise OutOfBoundsError( self, vmin, vmax )
         tagType = tt
         min = vmin
         max = vmax
@@ -129,7 +249,11 @@ def _makeIntPrimitiveClass( classname, tt, vmin, vmax, r, w, **kwargs ):
         """.format( classname )
     return _IntPrimitiveTag
 
-def _leafRget( self, index, default=None ):
+#rget() implementation for TAG_String, TAG_Byte_Array, and TAG_Int_Array.
+#Unlike rget(), _rget_leaf() takes a single positional argument because
+#TAG_String, TAG_Byte_Array, and TAG_Int_Array contain leaves, i.e. non-container values.
+#Therefore, providing more than two positional arguments will cause a TypeError to be raised.
+def _rget_leaf( self, index, *, default=None ):
     l = len( self )
     if index >= l or index < 0:
         return default
@@ -184,7 +308,7 @@ class _BaseTag:
                 TAG_Float: -1.2
             ]
         }
-        
+
         >>> ex.print( 0 )
         TAG_Compound( "example" ): 2 entries { ... }
 
@@ -219,7 +343,6 @@ class _BaseTag:
 
             #Does the same thing, but returns None instead of throwing an exception:
             itemdata = leveldata.rget( "FML", "ItemData" )
-            
         """
         raise NotImplementedError()
 
@@ -245,7 +368,7 @@ class _BaseIntTag( int, _BaseTag ):
     """
     Base class for all primitive integer tags (TAG_Byte, TAG_Short, TAG_Int, TAG_Long).
     Defines two static members min and max that represent the bounds (inclusive) of the range of values that can be represented by that primitive.
-    This class implements a constructor that asserts that the given value is within these bounds, and throws a ValueError if they are not.
+    This class implements a constructor that asserts that the given value is within these bounds, and raises an OutOfBoundsError if they are not.
     """
     isNumeric  = True
     isIntegral = True
@@ -254,16 +377,12 @@ class _BaseIntTag( int, _BaseTag ):
 
     __slots__ = ()
 
-    #min > max here so if a subclass forgets to set these the constructor will always fail
     min =  1
     max = -1
-    def __init__( self, value=None ):
-        #Note: self is set by int's __new__ prior to calling __init__.
-        #self is guaranteed to be an int, unlike value. The only reason the value parameter is here is so __init__ won't raise errors.
-        if self < self.min or self > self.max:
-            raise OutOfBoundsError( self, self.min, self.max )
+
+    #TODO: __iadd__, __isub__, __imul__, __idiv__, etc.
     def __repr__( self ):
-        return "{}({})".format( self.__class__.__name__, super().__repr__() )
+        return "{}({})".format( self.__class__.__name__, _int_repr( self ) )
     def _p( self, name, depth, maxdepth, maxlen, fn ):
         fn( "{}{}{}: {:d}".format( "    "*depth, self.__class__.__name__, name, self ) )
 
@@ -282,12 +401,13 @@ class TAG_Float( float, _BaseTag ):
     isNumeric = True
     isReal    = True
 
-    value = property( float, doc="Read-only property. Converts this tag to a float" )
+    value = property( float, doc="Read-only property. Converts this tag to a float." )
 
     __slots__ = ()
-    
+
+    #TODO: __iadd__, __isub__, __imul__, __idiv__, etc.
     def __repr__( self ):
-        return "TAG_Float({})".format( super().__repr__() )
+        return "TAG_Float({})".format( _float_repr( self ) )
     def _p( self, name, depth, maxdepth, maxlen, fn ):
         fn( "{}TAG_Float{}: {:.17g}".format( "    "*depth, name, self ) )
     def _r( i ):
@@ -304,12 +424,13 @@ class TAG_Double( float, _BaseTag ):
     isNumeric = True
     isReal    = True
 
-    value = property( float, doc="Read-only property. Converts this tag to a float" )
+    value = property( float, doc="Read-only property. Converts this tag to a float." )
 
     __slots__ = ()
 
+    #TODO: __iadd__, __isub__, __imul__, __idiv__, etc.
     def __repr__( self ):
-        return "TAG_Double({})".format( super().__repr__() )
+        return "TAG_Double({})".format( _float_repr( self ) )
     def _p( self, name, depth, maxdepth, maxlen, fn ):
         fn( "{}TAG_Double{}: {:.17g}".format( "    "*depth, name, self ) )
     def _r( i ):
@@ -333,10 +454,10 @@ class TAG_Byte_Array( bytearray, _BaseTag ):
     isSequence  = True
 
     __slots__ = ()
-    
+
     def __repr__( self ):
-        return "TAG_Byte_Array"+super().__repr__()[9:]
-    rget = _leafRget
+        return "TAG_Byte_Array"+_bytearray_repr( self )[9:]
+    rget = _rget_leaf
     def _p( self, name, depth, maxdepth, maxlen, fn ):
         l = len( self )
         fn( "{}TAG_Byte_Array{}: [{:d} byte{}]".format( "    "*depth, name, l, "s" if l != 1 else "" ) )
@@ -370,16 +491,16 @@ class TAG_String( str, _BaseTag ):
     #Note: TAG_String overrides methods that modify it in place to return TAG_String, but all other methods return str.
     def __iadd__( self, value ):
         #Note: str doesn't have __iadd__
-        return TAG_String( super().__add__( value ) )
+        return TAG_String( _str_add( self, value ) )
 
     def __imul__( self, value ):
         #Note: str doesn't have __imul__
-        return TAG_String( super().__imul__( value ) )
+        return TAG_String( _str_mul( self, value ) )
 
     def __repr__( self ):
-        return "TAG_String({})".format( super().__repr__() )
-    
-    rget = _leafRget
+        return "TAG_String({})".format( _str_repr( self ) )
+
+    rget = _rget_leaf
 
     def _p( self, name, depth, maxdepth, maxlen, fn ):
         fn( "{}TAG_String{}: {:s}".format( "    "*depth, name, self ) )
@@ -390,7 +511,7 @@ class TAG_String( str, _BaseTag ):
 class TAG_Int_Array( array, _BaseTag ):
     """
     Represents a TAG_Int_Array.
-    TAG_Compound is a signed 4-byte int array subclass and generally works the same way and in the same places any other sequence (tuple, list, array etc) would.
+    TAG_Int_Array is a signed 4-byte int array subclass and generally works the same way and in the same places any other sequence (tuple, list, array etc) would.
 
     A TAG_Int_Array may not contain more than 2147483647 integers (8 GiB), however this is not enforced.
     Because this is an array of signed 4-byte integers, its values are limited to a signed 4-byte integer's range: [-2147483648, 2147483647].
@@ -403,15 +524,15 @@ class TAG_Int_Array( array, _BaseTag ):
 
     #array implements __new__ rather than __init__
     def __new__( cls, *args, **kwargs ):
-        return array.__new__( cls, SIGNED_INT_TYPE, *args, **kwargs )
+        return _array_new( cls, SIGNED_INT_TYPE, *args, **kwargs )
 
     def __repr__( self ):
         if len( self ) > 0:
-            return "TAG_Int_Array({})".format( super().__repr__()[11:-1] )
+            return "TAG_Int_Array({})".format( _array_repr( self )[11:-1] )
         else:
             return "TAG_Int_Array()"
 
-    rget = _leafRget
+    rget = _rget_leaf
 
     def _p( self, name, depth, maxdepth, maxlen, fn ):
         l = len( self )
@@ -439,20 +560,44 @@ class TAG_List( list, _BaseTag ):
 
     __slots__ = "listTagType"
 
-    def __init__( self, tags=() ):
+    def __init__( self, iterable=(), listTagType=None ):
         """
         TAG_List constructor.
-        Initializes a new list, optionally with a given sequence of tags.
-        If tags is given, it must be a sequence (e.g. tuple, list) of TAG_* objects (e.g. TAG_Byte, TAG_Compound, etc). All tags must be of the same type.
+        Initializes a new TAG_List, optionally with a given iterable.
+
+        iterable is an optional parameter that determines the initial contents of the list. Defaults to an empty tuple.
+            Like the name suggests, if given it should be something that can be iterated over (e.g. list, tuple, generator, etc).
+            iterable's values can be tags (e.g. TAG_String( "Example" ) ) or non-tag values that can be converted to tags (e.g. "Example").
+            All tags in a list must be of the same type. If necessary, iterable's values will be converted to the appropriate type of tag for the list.
+        listTagType is an optional parameter specifying the type of tags stored by this list.
+            This can be None (the default) or a tag class.
+            If this is None, the list's tagType is deduced by inspecting the first value of the iterable (if any).
+            Typically this parameter is only needed in cases where you're making lists of int/float based tags:
+                jnbt.TAG_Byte
+                jnbt.TAG_Short
+                jnbt.TAG_Int
+                jnbt.TAG_Long
+                jnbt.TAG_Float
+                jnbt.TAG_Double
+
+        Examples:
+            #List of strings
+            ls = jnbt.TAG_List( ( "Check", "out", "these", "strings!" ) )
+
+            #Numbers 0-9 as a list of TAG_Int
+            ls = jnbt.TAG_List( range(10), jnbt.TAG_Int )
+
+            #List of coordinates as TAG_Double
+            ls = jnbt.TAG_List( ( 100.21, 60, -500.852 ), jnbt.TAG_Double )
         """
-        #Determine tag type and ensure all given tags are of the same type
-        if len( tags ) > 0:
-            it = iter( tags )
-            tt = next( it ).tagType
-            _assertTagList( it, tt )
-            self.listTagType = tt
-            super().__init__( tags )
-        #Empty list; use default tagType TAG_END
+        if listTagType is None:
+            _list_init( self, _TL_init_v2t( iterable ) )
+        else:
+            _avtt( listTagType.tagType )
+            _list_init( self, _TL_v2t( iterable, listTagType ) )
+
+        if len( self ) > 0:
+            self.listTagType = self[0].tagType
         else:
             self.listTagType = TAG_END
 
@@ -468,104 +613,129 @@ class TAG_List( list, _BaseTag ):
     #compound = (outside of class)
     intarray  = _makeTagAppender( "intarray",  TAG_Int_Array  )
 
-    def __iadd__( self, value ):
-        if len( value ) == 0:
-            return self
-        
-        #Ensure the tags we're adding match our list tagType.
-        #If the list is empty, use the tag type from the first tag we're adding.
-        tt = self.listTagType
-        it = iter( value )
-        if tt == TAG_END:
-            tt = next( it ).tagType
-        _assertTagList( it, tt )
+    insert_byte      = _makeTagInserter( "insert_byte",      TAG_Byte       )
+    insert_short     = _makeTagInserter( "insert_short",     TAG_Short      )
+    insert_int       = _makeTagInserter( "insert_int",       TAG_Int        )
+    insert_long      = _makeTagInserter( "insert_long",      TAG_Long       )
+    insert_float     = _makeTagInserter( "insert_float",     TAG_Float      )
+    insert_double    = _makeTagInserter( "insert_double",    TAG_Double     )
+    insert_bytearray = _makeTagInserter( "insert_bytearray", TAG_Byte_Array )
+    insert_string    = _makeTagInserter( "insert_string",    TAG_String     )
+    #insert_list     = (outside of class)
+    #insert_compound = (outside of class)
+    insert_intarray  = _makeTagInserter( "insert_intarray",  TAG_Int_Array  )
 
-        super().__iadd__( self, value )
-                
+    def __iadd__( self, value ):
+        if len( self ) > 0:
+            _list_iadd( self, _TL_suggest_v2t( value, self.listTagType ) )
+        else:
+            _list_iadd( self, _TL_init_v2t( value ) )
+            if len( self ) > 0:
+                self.listTagType = self[0].tagType
+
         return self
 
     def __imul__( self, value ):
         if value == 0:
             self.listTagType = TAG_END
-        super().__imul__( value )
+        _list_imul( self, value )
         return self
 
     def __setitem__( self, key, value ):
-        #Add, remove, or replace tags in a slice, e.g. list[1:4] = [1,2,3]
+        """
+        Handle self[key] = value.
+
+        If key is an int, value should be a single value. For example:
+            list[0] = jnbt.TAG_String( "Example" )
+            list[1] = "Another Example"
+        If key is a slice, value should be an iterable (list, tuple, generator, etc) of values. For example:
+            list[:]   = ( TAG_Int(5), 6, 7, 8 )
+            list[2:4] = ()
+        If key isn't an int or a slice, TypeError is raised.
+
+        If they aren't already, differing tags and non-tag values will be converted to a singular tag class.
+        If only part of the list is being replaced:
+            Given values will be converted to the type of tags currently stored by the list.
+        If the entire list is being replaced:
+            Given values will be converted to the tag type of the first/only value.
+            If the first value isn't a tag, values will be converted to the type of tags currently stored by the list.
+            If the list is empty, then values are converted to the tag class mapped to the first/only value's Python type.
+            If all of these attempts fail, a ConversionError is raised.
+        If a conversion is performed, the tag constructor may raise an exception.
+        """
+        ml = len( self )
+        #Add, remove, or replace tags in a slice, e.g. list[1:4] = (1,2,3)
         if isinstance( key, slice ):
-            ml = len( self )
             sl = len( range( *key.indices( ml ) ) )
 
-            #Replacing the entire list's contents
+            #Replace the entire list's contents. This may possibly change the list tagType.
             if ml == sl:
-                #Replacing with a non-empty list; determine new list tagType.
-                if len( value ) > 0:
-                    it = iter( value )
-                    tt = next( it ).tagType
-                    _assertTagList( it, tt )
-                    self.listTagType = tt
-                #Replacing with an empty list; new list tagtype is default TAG_END.
-                else:
-                    self.listTagType = TAG_END
-            #Replacing only some of the list contents; ensure that the replacement tags match the existing tags' tagType.
+                _list_setitem( self, key, _TL_suggest_v2t( value, self.listTagType ) )
+                self.listTagType = self[0].tagType if len( self ) > 0 else TAG_END
+            #Replace some of the list's contents, values must be converted to existing tagType if different
             else:
-                _assertTagList( value, self.listTagType )
-        #Replace an existing tag, e.g. list[1] = TAG_Int( 5 ). Ensure replacement tag has the same tagtype.
-        elif value.tagType != self.listTagType:
-            raise WrongTagError( self.listTagType, value.tagType )
-
-        super().__setitem__( key, value )
+                _list_setitem( self, key, _TL_v2t( value, _TAGCLASS[ self.listTagType ] ) )
+        #Replace a single tag...
+        elif isinstance( key, int ):
+            #Replace an existing tag with another tag, e.g. list[1] = TAG_Int( 5 )
+            #Change the list tagType if we're replacing our only tag.
+            if ml == 1:
+                t = getattr( value, "tagType", None )
+                if t is None:
+                    value = _TAGCLASS[self.listTagType]( value )
+                else:
+                    self.listTagType = t
+            #If we have several tags, the replacement tag needs to match the tagType of the rest of the tags.
+            #Attempt a conversion if value is a tag of a different type or a non-tag.
+            elif ml > 0:
+                ltt = self.listTagType
+                if getattr( value, "tagType", None ) != ltt:
+                    value = _TAGCLASS[ ltt ]( value )
+            _list_setitem( self, key, value )
+        #Invalid key, let list.__setitem__ throw a TypeError
+        else:
+            _list_setitem( self, key, None )
 
     #TODO: need __getitem__ that returns TAG_List for slices
 
     def __delitem__( self, key ):
-        super().__delitem__( key )
+        _list_delitem( self, key )
         if len( self ) == 0:
             self.listTagType = TAG_END
 
     def __repr__( self ):
         if len( self ) > 0:
-            return "TAG_List({})".format( super().__repr__() )
+            return "TAG_List({})".format( _list_repr( self ) )
         else:
             return "TAG_List()"
 
     def append( self, value ):
-        tt = value.tagType
-        if len( self ) == 0:
-            self.listTagType = tt
-        elif tt != self.listTagType:
-            raise WrongTagError( self.listTagType, tt )
-        super().append( value )
+        _list_append( self, self._a( value ) )
 
     def clear( self ):
-        super().clear()
+        _list_clear( self )
         self.listTagType = TAG_END
 
     def copy( self ):
-        l = list.__new__( TAG_List )
+        l = _list_new( TAG_List )
         l.listTagType = self.listTagType
         super( TAG_List, l ).__iadd__( self )
         return l
 
     def extend( self, iterable ):
-        self.__iadd__( self, iterable )
+        self.__iadd__( iterable )
 
     def insert( self, index, value ):
-        tt = value.tagType
-        if len( self ) == 0:
-            self.listTagType = tt
-        elif tt != self.listTagType:
-            raise WrongTagError( self.listTagType, tt )
-        super().insert( index, obj )
+        _list_insert( self, index, self._a( value ) )
 
     def pop( self, *args, **kwargs ):
-        v = super().pop( *args, **kwargs )
+        v = _list_pop( self, *args, **kwargs )
         if len( self ) == 0:
             self.listTagType = TAG_END
         return v
 
     def remove( self, value ):
-        super().remove( value )
+        _list_remove( self, value )
         if len( self ) == 0:
             self.listTagType = TAG_END
 
@@ -577,17 +747,40 @@ class TAG_List( list, _BaseTag ):
             i = args[0]
             if i >= len( self ) or i < 0:
                 return default
-            
+
             if l == 1:
                 return self[i]
             else:
                 return self[i].rget( *args[1:], default=default )
 
+    #Called by append() and insert().
+    #Changes the list tagType and/or converts the value to a TAG_* of the appropriate type if necessary.
+    #Returns the (possibly converted) value.
+    def _a( self, value ):
+        ltt = self.listTagType
+        t = getattr( value, "tagType", None )
+        #List is empty
+        if ltt == TAG_END:
+            #value isn't a tag
+            if t is None:
+                t = _TAGMAP.get( value.__class__ )
+                #No mapped conversion for this type
+                if t is None:
+                    raise ConversionError( value )
+                value = t( value )
+                t = t.tagType
+            #Update the list tagType
+            self.listTagType = t
+        #List is non-empty, value isn't a tag or is a tag of the wrong type
+        elif t != ltt:
+            value = _TAGCLASS[ltt]( value )
+        return value
+
     def _p( self, name, depth, maxdepth, maxlen, fn ):
         l = len( self )
         indent = "    "*depth
         line = "{}TAG_List{}: {} [".format( indent, name, _tls( l, self.listTagType ) )
-        
+
         if l == 0:
             fn( line + "]" )
         elif depth < maxdepth and maxlen != 0:
@@ -649,30 +842,44 @@ class TAG_Compound( OrderedDict, _BaseTag ):
         """
         Handle self[key] = value.
 
+        Note: Consider using the tag setter methods instead. They're unambiguous and often more compact. For example:
+            comp.string( "str", "Example!" )
+            comp.byte( "byte", 5 )
+
         key must be a str. If it isn't, TypeError is raised.
-        To insert or replace a tag with the given key, value must be a TAG_*. For example:
+
+        value can be a tag or a non-tag.
+        If a non-tag is provided, it is converted to a tag according to the following rules:
+            If a tag with the given name already exists, value is converted to the existing tag's type.
+            If no such tag exists, value is converted to the tag class mapped to the value's Python type.
+            If both of these attempts fail, a ConversionError is raised.
+        If a conversion is performed, the tag constructor may raise an exception.
+
+        Examples:
             comp["str"]  = jnbt.TAG_String( "Example!" )
             comp["byte"] = jnbt.TAG_Byte( 5 )
 
-        For convenience, non TAG_* values may also be used, but only to change the value of an existing tag (due to possible ambiguity). If no such tag exists, NameError is raised.
-        value must be something valid to pass to that tag's constructor. For example:
             comp["str"] = "Another example!"
             comp["byte"] = -5
-        If you need to insert non-TAG_* values, use the tag setter methods instead (e.g. comp.byte(key, value) ).
         """
-        #Ensure key is a str and value is a TAG_*
+        #Ensure key is a str and value is a tag
         if not isinstance( key, str ):
             raise TypeError( "Attempted to set a non-str key on TAG_Compound." )
 
-        #If value is a non TAG_*, cast it to the type of the existing tag with the given name.
+        #If value is a non tag, attempt to convert it to a tag.
         if not hasattr( value, "tagType" ):
-            #Raise NameError if there is no previous tag
-            prev = self.get( key )
-            if prev is None:
-                raise NameError( "There is no tag with the name \"{}\" in this TAG_Compound.".format( key ) )
-            value = prev.__class__( value )
+            #If there is an existing tag with the given name, convert the value to the existing tag's type.
+            temp = self.get( key )
+            if temp is None:
+                #Otherwise, see if we can determine the tag class from the python type.
+                temp = _TAGMAP.get( value.__class__ )
+                if temp is None:
+                    raise ConversionError( value )
+                value = temp( value )
+            else:
+                value = temp.__class__( value )
 
-        super().__setitem__( key, value )
+        _od_setitem( self, key, value )
 
     #Note: No __repr__ override necessary, OrderedDict inserts the correct classname for us
 
@@ -763,7 +970,7 @@ class TAG_Compound( OrderedDict, _BaseTag ):
 class NBTDocument( TAG_Compound ):
     """
     Represents an NBT document.
-    
+
     An NBTDocument is a named TAG_Compound that serves as the root tag of the NBT tree.
     Although NBTDocuments can be named, more often than not the name is simply the empty string, "".
     """
@@ -889,9 +1096,11 @@ class NBTDocument( TAG_Compound ):
         return "NBTDocument({})".format( ", ".join( parts ) )
 
 #Note: Have to set create these methods here because the target classes don't exist until this point:
-TAG_List.list          = _makeTagAppender( "list",     TAG_List     )
-TAG_List.compound      = _makeTagAppender( "compound", TAG_Compound )
-TAG_Compound.compound  = _makeTagSetter(   "compound", TAG_Compound )
+TAG_List.list                    = _makeTagAppender(   "list",                TAG_List     )
+TAG_List.compound                = _makeTagAppender(   "compound",            TAG_Compound )
+TAG_List.insert_list             = _makeTagInserter(   "insert_list",         TAG_List     )
+TAG_List.insert_compound         = _makeTagInserter(   "insert_compound",     TAG_Compound )
+TAG_Compound.compound            = _makeTagSetter(     "compound",            TAG_Compound )
 TAG_Compound.setdefault_compound = _makeTagSetDefault( "setdefault_compound", TAG_Compound )
 
 #Tuple of tag classes indexed by tagType.
@@ -910,6 +1119,25 @@ _TAGCLASS = (
     TAG_Compound,   #TAG_COMPOUND
     TAG_Int_Array   #TAG_INT_ARRAY
 )
+
+#Mapping of python types -> tag classes.
+#NBT doesn't have a boolean type. Instead, a TAG_Byte with a value of 0 for False and 1 for True is usually used instead.
+#Therefore, we map the python bool type to TAG_Byte.
+#Tag type deduction is not possible for the int and float python types because it would be ambiguous;
+#int could be deduced as TAG_Byte, TAG_Short, TAG_Int, or TAG_Long,
+#and float could be deduced as TAG_Float or TAG_Double.
+_TAGMAP = {
+    bool:        TAG_Byte,
+    bytes:       TAG_Byte_Array,
+    bytearray:   TAG_Byte_Array,
+    memoryview:  TAG_Byte_Array,
+    str:         TAG_String,
+    list:        TAG_List,
+    tuple:       TAG_List,
+    dict:        TAG_Compound,
+    OrderedDict: TAG_Compound,
+    array:       TAG_Int_Array
+}
 
 def read( source, compression="gzip", target=None, create=False ):
     """

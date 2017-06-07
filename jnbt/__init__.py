@@ -7,7 +7,7 @@ It features both DOM and SAX-style parsing and writing, as well as utilities to 
 from jnbt.shared import (
     TAG_END, TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG, TAG_FLOAT, TAG_DOUBLE, TAG_BYTE_ARRAY, TAG_STRING, TAG_LIST, TAG_COMPOUND, TAG_INT_ARRAY,
     TAG_COUNT,
-    NBTFormatError, WrongTagError, DuplicateNameError, UnknownTagTypeError, OutOfBoundsError
+    NBTFormatError, WrongTagError, ConversionError, DuplicateNameError, UnknownTagTypeError, OutOfBoundsError
 )
 
 #read, NBTDocument and TAG_* Classes
@@ -28,7 +28,7 @@ from jnbt.writer import writer, NBTWriter
 __all__ = [
     "TAG_END", "TAG_BYTE", "TAG_SHORT", "TAG_INT", "TAG_LONG", "TAG_FLOAT", "TAG_DOUBLE", "TAG_BYTE_ARRAY", "TAG_STRING", "TAG_LIST", "TAG_COMPOUND", "TAG_INT_ARRAY",
     "TAG_COUNT",
-    "NBTFormatError", "WrongTagError", "DuplicateNameError", "UnknownTagTypeError", "OutOfBoundsError",
+    "NBTFormatError", "WrongTagError", "ConversionError", "DuplicateNameError", "UnknownTagTypeError", "OutOfBoundsError",
     "read", "NBTDocument", "TAG_Byte", "TAG_Short", "TAG_Int", "TAG_Long", "TAG_Float", "TAG_Double", "TAG_Byte_Array", "TAG_String", "TAG_List", "TAG_Compound", "TAG_Int_Array",
     "DIM_NETHER", "DIM_OVERWORLD", "DIM_END", "World", "Dimension", "Region", "Chunk", "Block", "setMinecraftDir", "getMinecraftPath",
     "parse",
