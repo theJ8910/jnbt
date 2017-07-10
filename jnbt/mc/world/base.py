@@ -1,219 +1,42 @@
-"""
-JNBT's world module contains classes and functions for interacting with Minecraft saves.
+#This module contains code common to both the mcr and mca formats.
 
-Note: This module is still under development, and as such is subject to breaking changes!
-"""
 import os
 import os.path
-import sys
-import re
-import json
-import urllib.request
 import zlib
+import re
 from io import BytesIO
-from collections import OrderedDict
 
-from jnbt import tag
-from jnbt.shared import scandir, read as _r, readUnsignedByte as _rub, readUnsignedInt as _rui, readUnsignedInts as _ruis
+from jnbt           import tag
+from jnbt.shared    import scandir, read as _r, readUnsignedByte as _rub, readUnsignedInt as _rui, readUnsignedInts as _ruis
+from jnbt.mc.data   import _blockIDtoName
+from jnbt.mc.player import Player
 
-#Regular expressions that matches Region / Anvil filenames; i.e. filenames of the form "r.{x}.{z}.mc(a|r)" (where x and z are region coordinates)
-MCR_RE = re.compile( "^r\.(-?\d+)\.(-?\d+)\.mcr$", re.IGNORECASE )
-MCA_RE = re.compile( "^r\.(-?\d+)\.(-?\d+)\.mca$", re.IGNORECASE )
-#Regular expression that matches player data filenames; i.e. filenames of the form "{8}-{4}-{4}-{4}-{12}.dat", where {n} is a grouping of bytes that makes up the player's UUID, expressed as n hex digits.
-PD_RE  = re.compile( "^([0-9a-f]{8})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{12})\.dat$", re.IGNORECASE )
-
-
-
-
-#Dimension IDs for the Overworld, Nether, and End
-DIM_NETHER    = -1
-DIM_OVERWORLD =  0
-DIM_END       =  1
+#Regular expression that matches player save files in <world>/playerdata; i.e. filenames of the form "{8}-{4}-{4}-{4}-{12}.dat", where {n} is a grouping of bytes that makes up the player's UUID, expressed as n hex digits.
+RE_PLAYERDATA_FILE = re.compile( "^([0-9a-f]{8})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{12})\.dat$", re.IGNORECASE )
+#Regular expression that matches player save files in <world>/players; i.e. filenames of the form "{name}.dat", where name is the player's name
+RE_PLAYERS_FILE    = re.compile( "^(.+)\.dat$", re.IGNORECASE )
 
 #Compression types
 COMPRESSION_NONE = 0
 COMPRESSION_GZIP = 1
 COMPRESSION_ZLIB = 2
 
+#Level format enums
+#We only support region and anvil but others are listed in case I want to support those in the future
+LVLFMT_CLASSIC = 0
+LVLFMT_INDEV   = 1
+LVLFMT_ALPHA   = 2
+LVLFMT_REGION  = 3
+LVLFMT_ANVIL   = 4
 
-
-
-#Path to the Minecraft installation directory
-_mcPath = None
-_blockIDtoName = {
-      0: "minecraft:air",
-      1: "minecraft:stone",
-      2: "minecraft:grass",
-      3: "minecraft:dirt",
-      4: "minecraft:cobblestone",
-      5: "minecraft:planks",
-      6: "minecraft:sapling",
-      7: "minecraft:bedrock",
-      8: "minecraft:flowing_water",
-      9: "minecraft:water",
-     10: "minecraft:flowing_lava",
-     11: "minecraft:lava",
-     12: "minecraft:sand",
-     13: "minecraft:gravel",
-     14: "minecraft:gold_ore",
-     15: "minecraft:iron_ore",
-     16: "minecraft:coal_ore",
-     17: "minecraft:log",
-     18: "minecraft:leaves",
-     19: "minecraft:sponge",
-     20: "minecraft:glass",
-     21: "minecraft:lapis_ore",
-     22: "minecraft:lapis_block",
-     23: "minecraft:dispenser",
-     24: "minecraft:sandstone",
-     25: "minecraft:noteblock",
-     26: "minecraft:bed",
-     27: "minecraft:golden_rail",
-     28: "minecraft:detector_rail",
-     29: "minecraft:sticky_piston",
-     30: "minecraft:web",
-     31: "minecraft:tallgrass",
-     32: "minecraft:deadbush",
-     33: "minecraft:piston",
-     34: "minecraft:piston_head",
-     35: "minecraft:wool",
-     36: "minecraft:piston_extension",
-     37: "minecraft:yellow_flower",
-     38: "minecraft:red_flower",
-     39: "minecraft:brown_mushroom",
-     40: "minecraft:red_mushroom",
-     41: "minecraft:gold_block",
-     42: "minecraft:iron_block",
-     43: "minecraft:double_stone_slab",
-     44: "minecraft:stone_slab",
-     45: "minecraft:brick_block",
-     46: "minecraft:tnt",
-     47: "minecraft:bookshelf",
-     48: "minecraft:mossy_cobblestone",
-     49: "minecraft:obsidian",
-     50: "minecraft:torch",
-     51: "minecraft:fire",
-     52: "minecraft:mob_spawner",
-     53: "minecraft:oak_stairs",
-     54: "minecraft:chest",
-     55: "minecraft:redstone_wire",
-     56: "minecraft:diamond_ore",
-     57: "minecraft:diamond_block",
-     58: "minecraft:crafting_table",
-     59: "minecraft:wheat",
-     60: "minecraft:farmland",
-     61: "minecraft:furnace",
-     62: "minecraft:lit_furnace",
-     63: "minecraft:standing_sign",
-     64: "minecraft:wooden_door",
-     65: "minecraft:ladder",
-     66: "minecraft:rail",
-     67: "minecraft:stone_stairs",
-     68: "minecraft:wall_sign",
-     69: "minecraft:lever",
-     70: "minecraft:stone_pressure_plate",
-     71: "minecraft:iron_door",
-     72: "minecraft:wooden_pressure_plate",
-     73: "minecraft:redstone_ore",
-     74: "minecraft:lit_redstone_ore",
-     75: "minecraft:unlit_redstone_torch",
-     76: "minecraft:redstone_torch",
-     77: "minecraft:stone_button",
-     78: "minecraft:snow_layer",
-     79: "minecraft:ice",
-     80: "minecraft:snow",
-     81: "minecraft:cactus",
-     82: "minecraft:clay",
-     83: "minecraft:reeds",
-     84: "minecraft:jukebox",
-     85: "minecraft:fence",
-     86: "minecraft:pumpkin",
-     87: "minecraft:netherrack",
-     88: "minecraft:soul_sand",
-     89: "minecraft:glowstone",
-     90: "minecraft:portal",
-     91: "minecraft:lit_pumpkin",
-     92: "minecraft:cake",
-     93: "minecraft:unpowered_repeater",
-     94: "minecraft:powered_repeater",
-     95: "minecraft:stained_glass",
-     96: "minecraft:trapdoor",
-     97: "minecraft:monster_egg",
-     98: "minecraft:stonebrick",
-     99: "minecraft:brown_mushroom_block",
-    100: "minecraft:red_mushroom_block",
-    101: "minecraft:iron_bars",
-    102: "minecraft:glass_pane",
-    103: "minecraft:melon_block",
-    104: "minecraft:pumpkin_stem",
-    105: "minecraft:melon_stem",
-    106: "minecraft:vine",
-    107: "minecraft:fence_gate",
-    108: "minecraft:brick_stairs",
-    109: "minecraft:stone_brick_stairs",
-    110: "minecraft:mycelium",
-    111: "minecraft:waterlily",
-    112: "minecraft:nether_brick",
-    113: "minecraft:nether_brick_fence",
-    114: "minecraft:nether_brick_stairs",
-    115: "minecraft:nether_wart",
-    116: "minecraft:enchanting_table",
-    117: "minecraft:brewing_stand",
-    118: "minecraft:cauldron",
-    119: "minecraft:end_portal",
-    120: "minecraft:end_portal_frame",
-    121: "minecraft:end_stone",
-    122: "minecraft:dragon_egg",
-    123: "minecraft:redstone_lamp",
-    124: "minecraft:lit_redstone_lamp",
-    125: "minecraft:double_wooden_slab",
-    126: "minecraft:wooden_slab",
-    127: "minecraft:cocoa",
-    128: "minecraft:sandstone_stairs",
-    129: "minecraft:emerald_ore",
-    130: "minecraft:ender_chest",
-    131: "minecraft:tripwire_hook",
-    132: "minecraft:tripwire",
-    133: "minecraft:emerald_block",
-    134: "minecraft:spruce_stairs",
-    135: "minecraft:birch_stairs",
-    136: "minecraft:jungle_stairs",
-    137: "minecraft:command_block",
-    138: "minecraft:beacon",
-    139: "minecraft:cobblestone_wall",
-    140: "minecraft:flower_pot",
-    141: "minecraft:carrots",
-    142: "minecraft:potatoes",
-    143: "minecraft:wooden_button",
-    144: "minecraft:skull",
-    145: "minecraft:anvil",
-    146: "minecraft:trapped_chest",
-    147: "minecraft:light_weighted_pressure_plate",
-    148: "minecraft:heavy_weighted_pressure_plate",
-    149: "minecraft:unpowered_comparator",
-    150: "minecraft:powered_comparator",
-    151: "minecraft:daylight_detector",
-    152: "minecraft:redstone_block",
-    153: "minecraft:quartz_ore",
-    154: "minecraft:hopper",
-    155: "minecraft:quartz_block",
-    156: "minecraft:quartz_stairs",
-    157: "minecraft:activator_rail",
-    158: "minecraft:dropper",
-    159: "minecraft:stained_hardened_clay",
-    160: "minecraft:stained_glass_pane",
-    161: "minecraft:leaves2",
-    162: "minecraft:log2",
-    163: "minecraft:acacia_stairs",
-    164: "minecraft:dark_oak_stairs",
-    170: "minecraft:hay_block",
-    171: "minecraft:carpet",
-    172: "minecraft:hardened_clay",
-    173: "minecraft:coal_block",
-    174: "minecraft:packed_ice",
-    175: "minecraft:double_plant"
-}
-_blockNameToID = dict( reversed( item ) for item in _blockIDtoName.items() )
+#Maps LVLFMT_* enums to names
+LVLFMT_TO_NAME = (
+    "classic",
+    "indev",
+    "alpha",
+    "region",
+    "anvil"
+)
 
 #A world can have several dimensions.
 #A dimension can have several regions.
@@ -225,7 +48,6 @@ _blockNameToID = dict( reversed( item ) for item in _blockIDtoName.items() )
 #    .mcr: Minecraft Region (Minecraft Beta 1.3 - Minecraft 1.1)
 #    .mca: Minecraft Anvil (Minecraft 1.2.1+)
 #Region and Anvil are similar to one another but have a few notable differences.
-#We currently support Minecraft Anvil.
 
 #Region files are divided into 4KiB blocks called sectors.
 #Region files start with an 8 KiB large header.
@@ -262,127 +84,37 @@ _blockNameToID = dict( reversed( item ) for item in _blockIDtoName.items() )
 #      How the chunk is compressed. 1 = gzip, 2 = zlib.
 #      See COMPRESSION_* enums above.
 
-#Unfortunately a given player's last known name doesn't seem to be cached anywhere.
-#Here we can request it from the Mojang API:
-def uuidToUsername( uuid ):
-    """
-    Look up a player's name given their uuid.
-    uuid is expected to be a UUID string without dashes.
-    """
-    #Note: See documentation on Mojang API: http://wiki.vg/Mojang_API
-    with urllib.request.urlopen( "https://sessionserver.mojang.com/session/minecraft/profile/" + uuid ) as res:
-        return json.loads( res.read().decode() )["name"]
-
-def setMinecraftDir( path ):
-    """
-    Sets the path returned by getMinecraftPath().
-    """
-    global _mcPath
-    _mcPath = path
-
-def getDefaultMinecraftDir():
-    """
-    Return the default Minecraft directory for this operating system.
-    Raise an Exception if the operating system is not supported.
-    JNBT supports Windows, Linux, and Mac OS X.
-    """
-    name = sys.platform
-    if   name == "win32":
-        return os.path.join( os.environ["appdata"], ".minecraft" )
-    elif name == "linux":
-        return os.path.expanduser( os.path.join( "~", ".minecraft" ) )
-    elif name == "darwin": #Mac OS X
-        return os.path.expanduser( os.path.join( "~", "Library", "Application Support", "minecraft" ) )
-    else:
-        raise Exception( "Cannot find .minecraft directory; unsupported operating system." )
-
-def getMinecraftPath( *args ):
-    """
-    Return the path to the Minecraft installation directory.
-    If this path has not manually been set with setMinecraftDir(), sets it to the default installation path for the current operating system.
-
-    If any positional arguments are given, returns the path resulting from joining the Minecraft installation directory and the given arguments.
-    For example, on Windows:
-        jnbt.getMinecraftPath( "saves", "New World" )
-        "C:\\Users\\<your username>\\AppData\\Roaming\\.minecraft\\saves\\New World"
-    """
-    if _mcPath == None:
-        setMinecraftDir( getDefaultMinecraftDir() )
-    return os.path.join( _mcPath, *args )
-
-def nibble( ba, idx ):
-    """
-    Returns the nibble (a 4-bit value in the range [0,15]) in the given byte array, ba, at the given index, idx.
-    Note: idx is a nibble index, not a byte index. A single byte stores two nibbles, so for a byte array with 2048 bytes, there are 4096 nibbles.
-    This function assumes little-endian ordering of nibbles within the bytes they're stored in:
-        Byte index:        0        1
-                       uuuullll uuuullll  ...
-        Nibble index:    1   0    3   2
-    """
+#Returns the nibble (a 4-bit value in the range [0,15]) in the given byte array, b, at the given index, i.
+#Note: i is a nibble index, not a byte index. A single byte stores two nibbles, so for a byte array with 2048 bytes, there are 4096 nibbles.
+#This function assumes little-endian ordering of nibbles within the bytes they're stored in:
+#    Byte index:        0        1
+#                   uuuullll uuuullll  ...
+#    Nibble index:    1   0    3   2
+def _n( b, i ):
     #Note: bytearray has unsigned bytes in range [0,255]
-    return ( ba[idx//2] & 0x0F ) if (idx & 1) == 0 else ( ba[idx//2] >> 4 )
+    return ( b[i//2] & 0x0F ) if (i & 1) == 0 else ( b[i//2] >> 4 )
 
-def _readChunks( file, region ):
-    """
-    Reads chunks from the given readable file-like object, file.
-    Returns a Chunk list sorted by offset in ascending order.
-    """
 
-    #Map of regional index -> chunk
-    i2c = {}
 
-    #Read locations and timestamps
-    locations  = _ruis( file, 1024 )
-    timestamps = _ruis( file, 1024 )
 
-    for i in range( 1024 ):
-        loc = locations[i]
-        
-        if loc == 0:
-            continue
-
-        offset    = 4096 * ( ( loc & 0xFFFFFF00 ) >> 8 )
-        allocsize = 4096 * ( ( loc & 0x000000FF )      )
-
-        z,x = divmod( i, 32 )
-        
-        c = Chunk(
-            32 * region.x + x,
-            32 * region.z + z,
-            x,
-            z,
-            offset,
-            allocsize,
-            timestamps[ i ],
-            None,
-            None,
-            None,
-            region
-        )
-
-        i2c[i] = c
-
-    #Return a list of chunks sorted by offset (so we're always reading in a forward direction)
-    return sorted( i2c.values(), key=lambda c: c.offset )
-
-def _getBlockIDWithAdd( index, blocks, add ):
-    return blocks[index] + ( nibble( add, index ) << 8 )
-def _getBlockIDWithoutAdd( index, blocks, add ):
-    return blocks[index]
-
-class World:
+class _BaseWorld:
     """
     Represents an entire Minecraft world.
     A world consists of several dimensions (such as the Overworld, Nether, and The End), and global metadata (level.dat, player saves, etc).
     """
     __slots__ = ( "path", "_dimensions", "_leveldata", "_blockIDtoName", "_blockNameToID", "_players" )
 
+    #Subclasses should override these
+    formatid = None
+    format   = None
+    _clsDimension = None
+
     def __init__( self, path ):
         """
         Constructor.
         path is the path to the world's directory.
         """
-        self.path           = os.path.abspath( path )
+        self.path           = path
         self._dimensions    = None
         self._leveldata     = None
         self._blockIDtoName = None
@@ -391,13 +123,19 @@ class World:
 
     def iterDimensions( self ):
         """Iterates over every dimension in this world."""
-        #DIM0 is the overworld; its directory is the world directory.
         path = self.path
         if not os.path.isdir( path ):
             return
 
-        yield Dimension( 0, path, self )
+        #DIM0 is the overworld; its directory is the world directory.
+        clsDimension = self._clsDimension
+        yield clsDimension( path, self, 0 )
 
+        #For non-overworld dimensions, scan the world directory for directories named "DIM{id}", where id is the dimension's ID (e.g. DIM-1, DIM1, etc).
+        #TODO: This won't catch all dimension folders; unfortunately, some mods don't follow this naming scheme (e.g. Dimensional Doors, The Tropics, etc).
+        #A better implementation would select directories that contain a "region" directory, which in turn contains at least one .mca/.mcr file.
+        #The only problem with this approach is that the dimension's ID isn't necessarily derivable from the name of its directory (e.g. The Tropics uses "TROPICS" as the directory name for its dimension).
+        #We'd probably need to read that information from a data dump, which would need to be separately generated in-game by a mod.
         for entry in scandir( path ):
             if entry.is_dir():
                 name = entry.name.upper()
@@ -408,10 +146,10 @@ class World:
                     except ValueError:
                         pass
                     else:
-                        #Ignore directories in the world directory called "DIM0".
+                        #Ignore the "DIM0" directory if it exists;
                         #This is typically created by mods that wrongly assume the overworld's directory.
                         if i != 0:
-                            yield Dimension( i, entry.path, self )
+                            yield clsDimension( entry.path, self, i )
 
     def iterRegions( self ):
         """Iterates over every region in every dimension in this world."""
@@ -431,22 +169,42 @@ class World:
         for dimension in self.iterDimensions():
             yield from dimension.iterBlocks()
 
-    def iterPlayers( self ):
-        """Iterates over every player who has played in this world."""
-        path = os.path.join( self.path, "playerdata" )
-        if not os.path.isdir( path ):
-            return
-        for entry in scandir( path ):
-            match = PD_RE.fullmatch( entry.name )
-            if match:
-                yield Player( "".join( match.groups() ), tag.read( entry.path ) )
+    def iterPlayers( self, playerdata=True, players=True ):
+        """
+        Iterates over every player who has played in this world.
+        playerdata is an optional boolean that defaults to True.
+            If this is True, we will iterate over player save files in the playerdata/ directory if it exists.
+            Otherwise this directory will be skipped.
+        players is an optional boolean that defaults to True.
+            If this is True, we will iterate over player save files in the player/ directory if it exists.
+            Otherwise this directory will be skipped.
+        """
+        #NOTE: The same player may be iterated over multiple times (e.g. converted worlds).
+        #      Ideally the same player should only be iterated over once, but there may not be a reliable way of determining if two files represent the same player.
+
+        #Search <world>/playerdata/
+        if playerdata:
+            path = os.path.join( self.path, "playerdata" )
+            if os.path.isdir( path ):
+                for entry in scandir( path ):
+                    match = RE_PLAYERDATA_FILE.fullmatch( entry.name )
+                    if match:
+                        yield Player( entry.path, uuid="".join( match.groups() ) )
+        #Search <world>/players/
+        if players:
+            path = os.path.join( self.path, "players" )
+            if os.path.isdir( path ):
+                for entry in scandir( path ):
+                    match = RE_PLAYERS_FILE.fullmatch( entry.name )
+                    if match:
+                        yield Player( entry.path, name=match.group(1) )
 
     def getDimension( self, id ):
         """
         Return the dimension with the given ID, or None if this dimension doesn't exist.
         id is expected to be an int.
 
-        If you're getting a vanilla dimension, can use the jnbt.DIM_* enums for more readable code:
+        If you're getting a vanilla dimension, you can use the jnbt.DIM_* enums for more readable code:
             world.getDimension( jnbt.DIM_OVERWORLD )
         """
         #Return the cached Dimension object, if any
@@ -464,7 +222,7 @@ class World:
             return None
 
         #Create a new Dimension object, cache it, then return it
-        d = Dimension( id, path, self )
+        d = self._clsDimension( path, self, id )
         dims[id] = d
         return d
 
@@ -475,7 +233,7 @@ class World:
         dimensions = self._dimensions
         if dimensions is None:
             dimensions = {}
-        
+
             for d in self.iterDimensions():
                 dimensions[d.id] = d
 
@@ -487,14 +245,18 @@ class World:
         """Return this world's level.dat as a NBTDocument."""
         ld = self._leveldata
         if ld is None:
-            ld = tag.read( os.path.join( self.path, "level.dat" ) )
-            self._leveldata = ld
+            path = os.path.join( self.path, "level.dat" )
+            if os.path.isfile( path ):
+                self._leveldata = ld = tag.read( path )
+            else:
+                return None
         return ld
     leveldata = property( getLevelData )
 
     def getBlockName( self, id ):
         """
-        Returns the internal name of a block with the given id, or None if this world does not contain block information.
+        Returns the internal name of a block with the given id or None if this cannot be determined.
+        None may be returned if the world lacks block information, or if a block with that ID couldn't be found in the block information.
 
         This function may be expensive the first time it is called because it must load the world's leveldata and create id<->name dictionaries.
         """
@@ -506,21 +268,29 @@ class World:
             #Load the level.dat for this world.
             #If this is a modded world, we can get names for blocks and items from FML.ItemData
             tag = self.getLevelData()
-            if tag is not None:
-                tag = tag.rget("FML", "ItemData")
-                if tag is not None:
-                    for entry in tag:
-                        #Key is the internal name of the block/item, prepended with "\x01" for blocks and "\x02" for items
-                        key = str( entry["K"] )
-                        if key.startswith( "\x01" ):
-                            key = key[1:]
-                            value = int( entry["V"] )
-                            bIDtoN[ value ] = key
-                            bNtoID[ key   ] = value
+            if tag is None:
+                return None
+            tag = tag.rget("FML", "ItemData")
+            if tag is None:
+                return None
+            for entry in tag:
+                #Key is the internal name of the block/item, prepended with "\x01" for blocks and "\x02" for items
+                key = str( entry["K"] )
+                if key.startswith( "\x01" ):
+                    key = key[1:]
+                    value = int( entry["V"] )
+                    bIDtoN[ value ] = key
+                    bNtoID[ key   ] = value
 
             self._blockIDtoName = bIDtoN
             self._blockNameToID = bNtoID
-        return bIDtoN[ id ]
+        return bIDtoN.get( id )
+
+    def getSPPlayer( self ):
+        """Returns the singleplayer player, or None if the world isn't a singleplayer world."""
+        spnbt=self.getLevelData().rget( "Data", "Player" )
+        if spnbt is not None:
+            return Player( nbt=spnbt )
 
     def getPlayers( self ):
         """Return a dictionary of playerdata (sorted by uuid) for all players that have played on this world."""
@@ -533,37 +303,45 @@ class World:
         return players
     players = property( getPlayers )
 
-    def __iter__( self ):
-        """
-        Handles iter( world ). Equivalent to world.iterDimensions().
-        Allows use of this class in a for loop like so:
-            for dimension in world:
-                ...
-        """
-        return self.iterDimensions()
+    #Handles iter( world ). Equivalent to world.iterDimensions().
+    #Allows use of this class in a for loop like so:
+    #   for dimension in world:
+    #       ...
+    __iter__ = iterDimensions
 
-    def __getitem__( self, index ):
-        """Handles world[id]. Equivalent to world.getDimension( id )."""
-        return self.getDimension( index )
+    #Handles world[id]. Equivalent to world.getDimension( id ).
+    __getitem__ = getDimension
 
     def __repr__( self ):
         return "World('{}')".format( self.path )
 
-class Dimension:
+
+
+
+class _BaseDimension:
     """
     Represents a dimension.
     A dimension consists of a sparsely populated, practically infinite grid of regions.
     """
     __slots__ = ( "id", "path", "world", "_regions" )
 
-    def __init__( self, id, path, world ):
+    #Subclasses should override these
+    formatid     = None
+    format       = None
+    _clsRegion   = None
+    _reFilename  = None
+    _fmtFilename = None
+
+    def __init__( self, path, world, id=None ):
         """
         Constructor.
         path is the path to the dimension's directory.
+        world is the World this dimension is a part of.
+        id is the dimension's id
         """
-        self.id       = id
         self.path     = path
         self.world    = world
+        self.id       = id
         self._regions = None
 
     def iterRegions( self ):
@@ -571,11 +349,15 @@ class Dimension:
         path = os.path.join( self.path, "region" )
         if not os.path.isdir( path ):
             return
+
+        reFilename = self._reFilename
+        clsRegion  = self._clsRegion
+
         for entry in scandir( path ):
             if entry.is_file():
-                match = MCA_RE.fullmatch( entry.name )
+                match = reFilename.fullmatch( entry.name )
                 if match:
-                    yield Region(
+                    yield clsRegion(
                         int( match.group( 1 ) ),
                         int( match.group( 2 ) ),
                         entry.path,
@@ -610,14 +392,13 @@ class Dimension:
                 return r
 
         #Check if the world has a region with this ID
-        path = os.path.join( self.path, "region", "r.{:d}.{:d}.mca".format( rx, rz ) )
-        if not os.path.isfile( path ):
+        #If so, create a new Region object, cache it, then return it.
+        path = os.path.join( self.path, "region", self._fmtFilename.format( rx, rz ) )
+        if os.path.isfile( path ):
+            regions[ rx, rz ] = r = self._clsRegion( rx, rz, path, self )
+            return r
+        else:
             return None
-
-        #Create a new Region object, cache it, then return it
-        r = Region( rx, rz, path, self )
-        regions[ rx, rz ] = r
-        return r
 
     def getChunk( self, cx, cz, content=True ):
         """
@@ -681,34 +462,31 @@ class Dimension:
         """Handles dimension[x,z]. Equivalent to dimension.getRegion( x, z )."""
         return self.getRegion( *index )
 
-    def __iter__( self ):
-        """
-        Handles iter( dimension ). Equivalent to dimension.iterRegions().
-        Allows use of this class in a for loop like so:
-            for region in dimension:
-                ...
-        """
-        return self.iterRegions()
+    #Handles iter( dimension ). Equivalent to dimension.iterRegions().
+    #Allows use of this class in a for loop like so:
+    #    for region in dimension:
+    #        ...
+    __iter__ = iterRegions
 
     def __repr__( self ):
-        return "Dimension({:d},'{}')".format( self.id, self.path )
+        return "Dimension('{}',id={})".format( self.path, self.id )
 
 
 
 
-class Region:
-    """
-    Represents a region.
-    A region consists of a sparsely populated 32x32 grid of chunks.
-    Overall, a region encompasses a 512x256x512 block area.
-    """
+class _BaseRegion:
     __slots__ = ( "x", "z", "path", "dimension", "_chunks", "_length" )
+
+    #Subclasses should override these
+    formatid  = None
+    format    = None
+    _clsChunk = None
 
     def __init__( self, rx, rz, path, dimension ):
         """
         Constructor.
         rx and rz are the region coordinates.
-        path is the path to the region's Minecraft Anvil (mca) file.
+        path is the path to the region's file.
         dimension is a reference to the dimension this region is a part of.
         """
         #Region x and z coordinates
@@ -728,13 +506,56 @@ class Region:
             return r.world
     world = property( getWorld )
 
+    def _readChunks( self, file ):
+        """
+        Reads chunks from the given readable file-like object, file.
+        Returns a _clsChunk list sorted by offset in ascending order.
+        """
+
+        #Map of regional index -> chunk
+        i2c = {}
+
+        #Read locations and timestamps
+        locations  = _ruis( file, 1024 )
+        timestamps = _ruis( file, 1024 )
+
+        for i in range( 1024 ):
+            loc = locations[i]
+
+            if loc == 0:
+                continue
+
+            offset    = 4096 * ( ( loc & 0xFFFFFF00 ) >> 8 )
+            allocsize = 4096 * ( ( loc & 0x000000FF )      )
+
+            z,x = divmod( i, 32 )
+
+            c = self._clsChunk(
+                32 * self.x + x,
+                32 * self.z + z,
+                x,
+                z,
+                offset,
+                allocsize,
+                timestamps[ i ],
+                None,
+                None,
+                None,
+                self
+            )
+
+            i2c[i] = c
+
+        #Return a list of chunks sorted by offset (so we're always reading in a forward direction)
+        return sorted( i2c.values(), key=lambda c: c.offset )
+
     def iterChunks( self, content=True ):
         """
         Iterates over every chunk in this region.
         See help( jnbt.Region.getChunk ) for information on content.
         """
         with open( self.path, "rb" ) as file:
-            chunks = _readChunks( file, self )
+            chunks = self._readChunks( file )
 
             if content:
                 for c in chunks:
@@ -767,7 +588,7 @@ class Region:
                     with open( self.path, "rb" ) as file:
                         c._read( file )
                 return c
-        
+
         #Read, cache, and return the chunk
         with open( self.path, "rb" ) as file:
             i4 = 4*(cx + 32*cz)
@@ -778,7 +599,7 @@ class Region:
             if loc == 0:
                 return None
 
-            offset     = 4096 * ( ( loc & 0xFFFFFF00 ) >> 8 )
+            offset    = 4096 * ( ( loc & 0xFFFFFF00 ) >> 8 )
             allocsize = 4096 * ( ( loc & 0x000000FF )      )
 
             #Read timestamp
@@ -786,7 +607,7 @@ class Region:
             timestamp = _rui( file )
 
             #Read chunk header
-            c = Chunk(
+            c = self._clsChunk(
                 32 * self.x + cx,
                 32 * self.z + cz,
                 cx,
@@ -801,7 +622,7 @@ class Region:
             )
             if content:
                 c._read( file )
-            
+
         chunks[ cx, cz ] = c
         return c
 
@@ -811,7 +632,13 @@ class Region:
         cx and cz will be in the range [0,31].
         See help( jnbt.Region.getChunk ) for information on content.
         """
-        pass
+        chunks = self._chunks
+        if chunks is None:
+            chunks = {}
+            for c in self.iterChunks():
+                chunks[c.x,c.z] = c
+            self._chunks = chunks
+        return chunks
 
     def __len__( self ):
         """
@@ -829,31 +656,32 @@ class Region:
             self._length = l
         return l
 
-    def __iter__( self ):
-        """
-        Handles iter( region ). Equivalent to region.iterChunks().
-        Allows use of this class in a for loop like so:
-            for chunk in region:
-                ...
-        """
-        return self.iterChunks()
-
     def __getitem__( self, index ):
         """Handles region[x,z]. Equivalent to region.getChunk( x, z )."""
         return self.getChunk( *index )
 
+    #Handles iter( region ). Equivalent to region.iterChunks().
+    #Allows use of this class in a for loop like so:
+    #    for chunk in region:
+    #        ...
+    __iter__ = iterChunks
+
     def __repr__( self ):
         return "Region({:d}, {:d}, '{}')".format( self.x, self.z, self.path )
 
-class Chunk:
-    """
-    Represents a chunk.
-    Chunks are (typically zlib compressed) NBT documents stored within Minecraft Anvil (.mca) regions.
-    A chunk consists of a sparsely populated column of up to 16 sections (i.e. 1x16x1 sections).
-    Each section contains 16x16x16 blocks. Overall, each chunk contains 16x256x16 blocks.
-    Chunks also contain non-block data related to the chunk, for example save data for entities and tile entities within their bounds.
-    """
+
+
+
+#Base chunk class.
+#Chunks are (typically zlib compressed) NBT documents stored in region files.
+#Each chunk stores detailed information about a small area of the world.
+#This includes block, lighting, and heightmap data, but also non-block data such as save data for entities and tile entities within their bounds.
+class _BaseChunk:
     __slots__ = ( "x", "z", "lx", "lz", "offset", "allocsize", "timestamp", "size", "compression", "nbt", "region", "_tileEntities" )
+
+    #Subclasses should override this
+    formatid = None
+    format   = None
 
     def __init__( self, cx=None, cz=None, lx=None, lz=None, offset=None, allocsize=None, timestamp=None, size=None, compression=None, nbt=None, region=None ):
         """
@@ -897,7 +725,7 @@ class Chunk:
         Each key will be a tuple of absolute block coordinates, (x,y,z).
         Each value will be a TAG_Compound containing the named tags: x, y, z, id.
         """
-        tileEntities = self.tileEntities
+        tileEntities = self._tileEntities
         if tileEntities is None:
             tileEntities = self._initTileEntities()
         return tileEntities
@@ -918,24 +746,7 @@ class Chunk:
         Generator that iterates over every block in this chunk.
         For each block, yields a Block() describing it.
         """
-        #Reuse the same Block() instance to avoid performance penalty of repeated Block#__init__() calls.
-        block = Block( self )
-        for section in self.nbt["Level"]["Sections"]:
-            baseY = 16 * int( section["Y"] )
-            add = section.get("Add")
-            sectionData = (
-                baseY,
-                section["Blocks"],
-                add,
-                _getBlockIDWithAdd if add else _getBlockIDWithoutAdd,
-                section["Data"],
-                section["BlockLight"],
-                section["SkyLight"]
-            )
-            block._s = sectionData
-            for i in range( 1024 ):
-                block._i = i
-                yield block
+        raise NotImplementedError()
 
     def getBiome( self, x, z ):
         """
@@ -951,27 +762,13 @@ class Chunk:
         y is expected to be in the range [0,255].
         Returns a Block() describing the block at that position.
         """
-        for section in self.nbt["Level"]["Sections"]:
-            baseY = 16 * int( section["Y"] )
-            if y >= baseY and y < baseY + 16:
-                add = section.get("Add")
-                sectionData = (
-                    baseY,
-                    section["Blocks"],
-                    add,
-                    _getBlockIDWithAdd if add else _getBlockIDWithoutAdd,
-                    section["Data"],
-                    section["BlockLight"],
-                    section["SkyLight"]
-                )
-                return Block( self, sectionData, 256*(y-baseY) + 16*z + x )
-        return None
+        raise NotImplementedError()
 
     def _read( self, file ):
         """Read chunk contents from the given readable file-like object, file."""
         #Read chunk header
         file.seek( self.offset, os.SEEK_SET )
-        
+
         size        = _rui( file ) - 1
         compression = _rub( file )
 
@@ -1001,14 +798,11 @@ class Chunk:
         self._tileEntities = te
         return te
 
-    def __iter__( self ):
-        """
-        Handles iter( chunk ). Equivalent to chunk.iterBlocks().
-        Allows use of this class in a for loop like so:
-            for block in chunk:
-                ...
-        """
-        return self.iterBlocks()
+    #Handles iter( chunk ). Equivalent to chunk.iterBlocks().
+    #Allows use of this class in a for loop like so:
+    #    for block in chunk:
+    #        ...
+    __iter__ = iterBlocks
 
     def __getitem__( self, index ):
         """Handles chunk[x,y,z]. Equivalent to chunk.getBlock( x, y, z )."""
@@ -1017,7 +811,10 @@ class Chunk:
     def __repr__( self ):
         return "Chunk({:d}, {:d})".format( self.x, self.z )
 
-class Block:
+
+
+
+class _BaseBlock:
     """
     Contains detailed information about a particular block in the world.
     Block has several attributes:
@@ -1033,40 +830,35 @@ class Block:
     * tileEntity is the TAG_Compound for this block's tile entity, or None if this block is not a tile entity
     * chunk, region, dimension, and world are references to the chunk, region, dimension, and world that contains this block.
     """
-    __slots__ = ( "chunk", "_s", "_i" )
+    __slots__ = ( "chunk", "_d", "_i" )
 
-    def __init__( self, chunk = None, sectionData = None, index = None ):
-        self.chunk = chunk       #Chunk containing this block
-        self._s    = sectionData #Data relating to the section containing this block
-        self._i    = index       #Index of this block within the section
-    
+    #Subclasses should override these
+    formatid = None
+    format   = None
+
+    def __init__( self, chunk = None, data = None, index = None ):
+        self.chunk = chunk  #Chunk containing this block
+        self._d    = data   #Data relating to the section containing this block
+        self._i    = index  #Index of this block within the section
+
     def getPos( self ):
-        y, index = divmod( self._i, 256 )
-        z, x = divmod( index, 16 )
-        c = self.chunk
-        pos = (
-            16 * c.x   + x,
-            self._s[0] + y,
-            16 * c.z   + z
-        )
-        return pos
+        raise NotImplementedError()
     pos = property( getPos )
 
     def getX( self ):
-        return 16 * self.chunk.x + ( self._i & 15 )
+        raise NotImplementedError()
     x = property( getX )
-    
+
     def getY( self ):
-        return self._s[0] + ( self._i // 256 )
+        raise NotImplementedError()
     y = property( getY )
 
     def getZ( self ):
-        return 16 * self.chunk.z + ( ( self._i & 255 ) // 16 )
+        raise NotImplementedError()
     z = property( getZ )
 
     def getID( self ):
-        s = self._s
-        return s[3]( self._i, s[1], s[2] )
+        raise NotImplementedError()
     id = property( getID )
 
     def getName( self ):
@@ -1085,15 +877,15 @@ class Block:
     name  = property( getName )
 
     def getMeta( self ):
-        return nibble( self._s[4], self._i )
+        return _n( self._d[1], self._i )
     meta = property( getMeta )
 
     def getBlockLight( self ):
-        return nibble( self._s[5], self._i )
+        return _n( self._d[2], self._i )
     blockLight = property( getBlockLight )
 
     def getSkyLight( self ):
-        return nibble( self._s[6], self._i )
+        return _n( self._d[3], self._i )
     skyLight = property( getSkyLight )
 
     def getLight( self ):
@@ -1133,43 +925,4 @@ class Block:
     world = property( getWorld )
 
     def __repr__( self ):
-        return "Block({:d},{:d},{:d},{:d},{:d})".format( self.x, self.y, self.z, self.id, self.meta )
-
-class Player:
-    """
-    Represents a player.
-    uuid is the player's uuid.
-    nbt is the player's save file.
-    """
-    slots = ( "uuid", "nbt", "_name" )
-    def __init__( self, uuid, nbt ):
-        self.uuid  = uuid
-        self.nbt   = nbt
-        self._name = None
-
-    def getName( self ):
-        """
-        Returns the player's name.
-        If we don't already have it, this will fetch the player's name through the Mojang API.
-        """
-        name = self._name
-        if name is None:
-            name = uuidToUsername( self.uuid )
-            self._name = name
-        return name
-    name = property( getName )
-
-    def __repr__( self ):
-        return "Player('{}')".format( self.uuid )
-
-class FileSlice:
-    """Wrapper around a file that restricts reads/writes to the range described by the given offset/length"""
-    def __init__( self, file, offset, length ):
-        self.file = file
-        self._o = offset
-        self._l = length
-        self._p = 0
-    def read( self, size=-1 ):
-        self.file.read( size )
-    def write( self ):
-        self.file.write()
+        return "Block({:d},{:d},{:d},{:d},{:d})".format( *self.pos, self.id, self.meta )

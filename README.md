@@ -46,11 +46,7 @@ doc = jnbt.NBTDocument()
 doc.byte( "my_byte", 10 )
 
 #Add a TAG_List to doc and add TAG_Strings to it.
-list = doc.list( "my_list" )
-list.string( "This" )
-list.string( "is" )
-list.string( "an" )
-list.string( "example." )
+doc.list( "my_list", [ "This", "is", "an", "example." ] )
 
 #Add a TAG_Compound to doc and add tags to it.
 comp = doc.compound( "my_compound" )
@@ -102,16 +98,17 @@ jnbt.parse( "somefile.nbt", MyHandler() )
 
 Reading Minecraft Worlds
 ------------------------
-jnbt can read data related to Minecraft worlds, but cannot modify them at this time.
+jnbt can read Minecraft worlds, but cannot modify them at this time.
+Currently, both Region and Anvil formats are supported.
 
-Specifically, jnbt understands the structure of Minecraft world directories and represents it programmatically. You can find and read level and player data, dimensions, Anvil regions, chunk and block data in Minecraft worlds.
+Specifically, jnbt understands the structure of Minecraft world directories and represents it programmatically. You can find and read level and player data, dimensions, regions, chunk and block data in Minecraft worlds.
 
 Finding iron ore in the overworld:
 ```python
 import jnbt
 
-path  = jnbt.getMinecraftPath( "saves", "New World" )
-world = jnbt.World( path )
+#Open the world at <your minecraft directory>/saves/New World
+world = jnbt.getWorld( "New World" )
 
 overworld = world[ jnbt.DIM_OVERWORLD ]
 for block in overworld.iterBlocks():
@@ -158,6 +155,10 @@ http://minecraft.gamepedia.com/Region_file_format
 http://minecraft.gamepedia.com/Anvil_file_format
 
 http://minecraft.gamepedia.com/Chunk_format
+
+http://minecraft.gamepedia.com/index.php?title=Chunk_format&oldid=249962
+
+http://minecraft.gamepedia.com/Player.dat_format
 
 http://wiki.vg/Region_Files
 

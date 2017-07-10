@@ -13,15 +13,19 @@ from jnbt.shared import (
 #read, NBTDocument and TAG_* Classes
 from jnbt.tag import read, NBTDocument, TAG_Byte, TAG_Short, TAG_Int, TAG_Long, TAG_Float, TAG_Double, TAG_Byte_Array, TAG_String, TAG_List, TAG_Compound, TAG_Int_Array
 
-#Classes and functions to interact with Minecraft worlds
-from jnbt.world import DIM_NETHER, DIM_OVERWORLD, DIM_END, World, Dimension, Region, Chunk, Block, setMinecraftDir, getMinecraftPath
-
 #NBT Parsers + Handlers
 from jnbt.parse import parse
 from jnbt.handler import NBTHandler, PrintNBTHandler
 
 #NBT Writer
 from jnbt.writer import writer, NBTWriter
+
+#Minecraft-related classes and utilities
+from jnbt.mc.util import setMinecraftDir, getMinecraftPath
+from jnbt.mc.player import Player
+
+#Classes and functions to interact with Minecraft worlds
+from jnbt.mc.world import DIM_NETHER, DIM_OVERWORLD, DIM_END, getWorld, iterWorlds, World, Dimension, Region
 
 
 #Export everything we imported above
@@ -30,8 +34,9 @@ __all__ = [
     "TAG_COUNT",
     "NBTFormatError", "WrongTagError", "ConversionError", "DuplicateNameError", "UnknownTagTypeError", "OutOfBoundsError",
     "read", "NBTDocument", "TAG_Byte", "TAG_Short", "TAG_Int", "TAG_Long", "TAG_Float", "TAG_Double", "TAG_Byte_Array", "TAG_String", "TAG_List", "TAG_Compound", "TAG_Int_Array",
-    "DIM_NETHER", "DIM_OVERWORLD", "DIM_END", "World", "Dimension", "Region", "Chunk", "Block", "setMinecraftDir", "getMinecraftPath",
     "parse",
     "NBTHandler", "PrintNBTHandler",
-    "writer", "NBTWriter"
+    "writer", "NBTWriter",
+    "setMinecraftDir", "getMinecraftPath",
+    "DIM_NETHER", "DIM_OVERWORLD", "DIM_END", "getWorld", "iterWorlds", "World", "Dimension", "Region"
 ]
