@@ -270,7 +270,7 @@ def _rget_leaf( self, *args, default=None ):
         raise TypeError( "rget() takes at least 1 argument but 0 were given." )
     elif l == 1:
         i = args[0]
-        if i >= l or i < 0:
+        if not isinstance( i, int ) or i >= len(self) or i < 0:
             return default
         return self[i]
     else:
@@ -360,8 +360,10 @@ class _BaseTag:
 
             #Does the same thing, but returns None instead of throwing an exception:
             itemdata = leveldata.rget( "FML", "ItemData" )
-        """
-        raise NotImplementedError()
+        """ 
+        if len( args ) == 0:
+            raise TypeError( "rget() takes at least 1 argument but 0 were given." )
+        return default
 
     def _p( self, name, depth, maxdepth, maxlen, fn ):
         """
@@ -762,7 +764,7 @@ class TAG_List( list, _BaseTag ):
             raise TypeError( "rget() takes at least 1 argument but 0 were given." )
         else:
             i = args[0]
-            if i >= len( self ) or i < 0:
+            if not isinstance( i, int ) or i >= len( self ) or i < 0:
                 return default
 
             if l == 1:
