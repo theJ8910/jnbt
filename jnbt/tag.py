@@ -63,9 +63,15 @@ _od_setitem     = OrderedDict.__setitem__
 #If the type cannot be deduced, raises a CoversionError.
 #Additionally, the deduced tag class's constructor may also raise exceptions during conversion.
 def _TL_init_v2t( i ):
-    #Note: If i is empty, next() raises StopIteration, gracefully stopping the generator.
     i = iter( i )
-    f = next( i )
+    #Note: Python 3.7 compatibility (see PEP 380).
+    #Since Python 3.7, throwing StopIteration inside of a generator no longer silently terminates it; now it's converted to a RuntimeError instead.
+    #Previously, next() would throw a StopIteration when i was empty which would terminate the generator.
+    #But now to achieve the same effect, we need to explicitly catch StopIteration and return.
+    try:
+        f = next( i )
+    except StopIteration:
+        return
 
     #First value is a tag.
     if hasattr( f, "tagType" ):
@@ -91,9 +97,11 @@ def _TL_init_v2t( i ):
 #If the type cannot be deduced, raises a CoversionError.
 #Additionally, the deduced tag class's constructor may also raise exceptions during conversion.
 def _TL_suggest_v2t( i, t ):
-    #Note: If i is empty, next() raises StopIteration, gracefully stopping the generator.
     i = iter( i )
-    f = next( i )
+    try:
+        f = next( i )
+    except StopIteration:
+        return
 
     #First value is a tag.
     if hasattr( f, "tagType" ):
@@ -125,15 +133,17 @@ def _TL_v2t( i, c ):
 def _makeTagAppender( methodname, tagclass ):
     tt = tagclass.tagType
     def appender( self, *args, **kwargs ):
-        if len( self ) == 0:
-            self.listTagType = tt
-        elif tt != self.listTagType:
+        l = len( self )
+        if l != 0 and tt != self.listTagType:
             raise WrongTagError( self.listTagType, tt )
 
+        #Wait until after we've successfully constructed a tag and added it to the list before we change the list tag type
         t = tagclass( *args, **kwargs )
         _list_append( self, t )
+        if l == 0:
+            self.listTagType = tt
         return t
-    #Override appender.__name__ so help( tagclass ) shows this as "methodname( self, value)" instead of "methodname = appender( self, value )"
+    #Override appender.__name__ so help( tagclass ) shows this as "methodname( self, value )" instead of "methodname = appender( self, value )"
     appender.__name__ = methodname
     appender.__doc__ = \
         """
@@ -150,13 +160,15 @@ def _makeTagInserter( methodname, tagclass ):
         if l < 1:
             raise TypeError( "{} takes at least 1 positional argument but {:d} were given".format( methodname, l ) )
         pos, *args = args
-        if len( self ) == 0:
-            self.listTagType = tt
-        elif tt != self.listTagType:
+
+        l = len( self )
+        if l != 0 and tt != self.listTagType:
             raise WrongTagError( self.listTagType, tt )
 
         t = tagclass( *args, **kwargs )
         _list_insert( self, pos, t )
+        if l == 0:
+            self.listTagType = tt
         return t
     inserter.__name__ = methodname
     inserter.__doc__ = \
@@ -250,14 +262,19 @@ def _makeIntPrimitiveClass( classname, tt, vmin, vmax, r, w, **kwargs ):
     return _IntPrimitiveTag
 
 #rget() implementation for TAG_String, TAG_Byte_Array, and TAG_Int_Array.
-#Unlike rget(), _rget_leaf() takes a single positional argument because
-#TAG_String, TAG_Byte_Array, and TAG_Int_Array contain leaves, i.e. non-container values.
-#Therefore, providing more than two positional arguments will cause a TypeError to be raised.
-def _rget_leaf( self, index, *, default=None ):
-    l = len( self )
-    if index >= l or index < 0:
+#If more than 1 positional argument is provided to this function, default is returned.
+#This is because these aforementioned tag types contain leaves (non-container values) and indexing a leaf is guaranteed to fail.
+def _rget_leaf( self, *args, default=None ):
+    l = len( args )
+    if l == 0:
+        raise TypeError( "rget() takes at least 1 argument but 0 were given." )
+    elif l == 1:
+        i = args[0]
+        if i >= l or i < 0:
+            return default
+        return self[i]
+    else:
         return default
-    return self[index]
 
 class _BaseTag:
     """Base class for all jnbt tag classes."""
@@ -354,7 +371,7 @@ class _BaseTag:
             "(5)" for a TAG_List entry with index 5
             "(\"example\")" for a TAG_Compound entry with name "example"
         depth is the current recursive depth.
-        See help( tag.print  for a description of maxdepth, maxlen, and fn.
+        See help( tag.print ) for a description of maxdepth, maxlen, and fn.
         """
         raise NotImplementedError()
     def _w( self, o ):
@@ -627,7 +644,7 @@ class TAG_List( list, _BaseTag ):
 
     def __iadd__( self, value ):
         if len( self ) > 0:
-            _list_iadd( self, _TL_suggest_v2t( value, self.listTagType ) )
+            _list_iadd( self, _TL_v2t( value, _TAGCLASS[ self.listTagType ] ) )
         else:
             _list_iadd( self, _TL_init_v2t( value ) )
             if len( self ) > 0:
@@ -1020,7 +1037,7 @@ class NBTDocument( TAG_Compound ):
 
     def getWriteArguments( self ):
         """
-        Returns the arugments provided to the write() method when called without arguments.
+        Returns the arguments provided to the write() method when called without arguments.
         Returns (None, None) if these argments are not set.
         """
         return self.target, self.compression
