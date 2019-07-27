@@ -418,7 +418,7 @@ def assertLongArray( a ):
     """Asserts that a is an array of signed 8-byte integers. Raises TypeError if it is not."""
     if type( a ) is not array:
         raise TypeError( "Wrong type for values: expected array(\"q\")" )
-    if a.typecode != SIGNED_INT_TYPE:
+    if a.typecode != "q":
         raise TypeError( "Wrong array typecode for values: expected \"q\", got \"{}\"".format( a.typecode ) )
 
 def s8array( *args ):
