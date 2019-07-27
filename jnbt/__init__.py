@@ -5,13 +5,13 @@ It features both DOM and SAX-style parsing and writing, as well as utilities to 
 
 #NBT Tag Types, Exceptions
 from jnbt.shared import (
-    TAG_END, TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG, TAG_FLOAT, TAG_DOUBLE, TAG_BYTE_ARRAY, TAG_STRING, TAG_LIST, TAG_COMPOUND, TAG_INT_ARRAY,
+    TAG_END, TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG, TAG_FLOAT, TAG_DOUBLE, TAG_BYTE_ARRAY, TAG_STRING, TAG_LIST, TAG_COMPOUND, TAG_INT_ARRAY, TAG_LONG_ARRAY,
     TAG_COUNT,
     NBTFormatError, WrongTagError, ConversionError, DuplicateNameError, UnknownTagTypeError, OutOfBoundsError
 )
 
 #read, NBTDocument and TAG_* Classes
-from jnbt.tag import read, NBTDocument, TAG_Byte, TAG_Short, TAG_Int, TAG_Long, TAG_Float, TAG_Double, TAG_Byte_Array, TAG_String, TAG_List, TAG_Compound, TAG_Int_Array
+from jnbt.tag import read, NBTDocument, TAG_Byte, TAG_Short, TAG_Int, TAG_Long, TAG_Float, TAG_Double, TAG_Byte_Array, TAG_String, TAG_List, TAG_Compound, TAG_Int_Array, TAG_Long_Array
 
 #NBT Parsers + Handlers
 from jnbt.parse import parse
@@ -30,10 +30,10 @@ from jnbt.mc.world import DIM_NETHER, DIM_OVERWORLD, DIM_END, getWorld, iterWorl
 
 #Export everything we imported above
 __all__ = [
-    "TAG_END", "TAG_BYTE", "TAG_SHORT", "TAG_INT", "TAG_LONG", "TAG_FLOAT", "TAG_DOUBLE", "TAG_BYTE_ARRAY", "TAG_STRING", "TAG_LIST", "TAG_COMPOUND", "TAG_INT_ARRAY",
+    "TAG_END", "TAG_BYTE", "TAG_SHORT", "TAG_INT", "TAG_LONG", "TAG_FLOAT", "TAG_DOUBLE", "TAG_BYTE_ARRAY", "TAG_STRING", "TAG_LIST", "TAG_COMPOUND", "TAG_INT_ARRAY", "TAG_LONG_ARRAY",
     "TAG_COUNT",
     "NBTFormatError", "WrongTagError", "ConversionError", "DuplicateNameError", "UnknownTagTypeError", "OutOfBoundsError",
-    "read", "NBTDocument", "TAG_Byte", "TAG_Short", "TAG_Int", "TAG_Long", "TAG_Float", "TAG_Double", "TAG_Byte_Array", "TAG_String", "TAG_List", "TAG_Compound", "TAG_Int_Array",
+    "read", "NBTDocument", "TAG_Byte", "TAG_Short", "TAG_Int", "TAG_Long", "TAG_Float", "TAG_Double", "TAG_Byte_Array", "TAG_String", "TAG_List", "TAG_Compound", "TAG_Int_Array", "TAG_Long_Array",
     "parse",
     "NBTHandler", "PrintNBTHandler",
     "writer", "NBTWriter",

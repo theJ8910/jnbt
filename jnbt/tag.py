@@ -14,23 +14,24 @@ from io import BytesIO, StringIO
 from jnbt.shared import (
     NBTFormatError, WrongTagError, ConversionError, DuplicateNameError, OutOfBoundsError,
     INF,
-    TAG_END, TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG, TAG_FLOAT, TAG_DOUBLE, TAG_BYTE_ARRAY, TAG_STRING, TAG_LIST, TAG_COMPOUND, TAG_INT_ARRAY,
+    TAG_END, TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG, TAG_FLOAT, TAG_DOUBLE, TAG_BYTE_ARRAY, TAG_STRING, TAG_LIST, TAG_COMPOUND, TAG_INT_ARRAY, TAG_LONG_ARRAY,
     TAG_NAMES, TAG_COUNT, SIGNED_INT_TYPE,
 
-    writeTagName        as _wtn,  writeByte         as _wb,   writeShort          as _ws,
-    writeInt            as _wi,   writeLong         as _wl,   writeFloat          as _wf,
-    writeDouble         as _wd,   writeString       as _wst,  writeTagListHeader  as _wlh,
+    writeTagName        as _wtn,  writeByte           as _wb,   writeShort          as _ws,
+    writeInt            as _wi,   writeLong           as _wl,   writeFloat          as _wf,
+    writeDouble         as _wd,   writeString         as _wst,  writeTagListHeader  as _wlh,
 
-    writeByteArray      as _wba,  writeIntArray     as _wia,
+    writeByteArray      as _wba,  writeIntArray       as _wia,  writeLongArray      as _wla,
 
-    readTagName         as _rtn,  readByte          as _rb,   readShort           as _rs,
-    readInt             as _ri,   readLong          as _rl,   readFloat           as _rf,
-    readDouble          as _rd,   readString        as _rst,  readTagListHeader   as _rlh,
+    readTagName         as _rtn,  readByte            as _rb,   readShort           as _rs,
+    readInt             as _ri,   readLong            as _rl,   readFloat           as _rf,
+    readDouble          as _rd,   readString          as _rst,  readTagListHeader   as _rlh,
 
-    readArrayHeader     as _rah,  read              as _r,    readExpectedTagName as _retn,
+    readArrayHeader     as _rah,  read                as _r,    readExpectedTagName as _retn,
 
     tagListString       as _tls,
-    assertValidTagType  as _avtt, byteswapMaybe     as _bm,   copyReturnIntArray  as _cria
+    assertValidTagType  as _avtt, byteswapMaybe       as _bm,
+    copyReturnIntArray  as _cria, copyReturnLongArray as _crla
 )
 
 #Base class methods called at various locations
@@ -261,7 +262,7 @@ def _makeIntPrimitiveClass( classname, tt, vmin, vmax, r, w, **kwargs ):
         """.format( classname )
     return _IntPrimitiveTag
 
-#rget() implementation for TAG_String, TAG_Byte_Array, and TAG_Int_Array.
+#rget() implementation for TAG_String, TAG_Byte_Array, TAG_Int_Array, and TAG_Long_Array.
 #If more than 1 positional argument is provided to this function, default is returned.
 #This is because these aforementioned tag types contain leaves (non-container values) and indexing a leaf is guaranteed to fail.
 def _rget_leaf( self, *args, default=None ):
@@ -292,12 +293,13 @@ class _BaseTag:
     isList      = False
     isCompound  = False
     isIntArray  = False
+    isLongArray = False
 
     #Simple means to check properties of the tag
     isNumeric   = False #True for TAG_Byte, TAG_Short, TAG_Int, TAG_Long, TAG_Float, TAG_Double
-    isIntegral  = False #True for TAG_Byte, TAG_Short, TAG_Int, TAG_Long,
+    isIntegral  = False #True for TAG_Byte, TAG_Short, TAG_Int, TAG_Long
     isReal      = False #True for TAG_Float, TAG_Double
-    isSequence  = False #True for TAG_String, TAG_Byte_Array, TAG_List, TAG_Int_Array
+    isSequence  = False #True for TAG_String, TAG_Byte_Array, TAG_List, TAG_Int_Array, TAG_Long_Array
 
     __slots__ = ()
 
@@ -547,7 +549,7 @@ class TAG_Int_Array( array, _BaseTag ):
 
     def __repr__( self ):
         if len( self ) > 0:
-            return "TAG_Int_Array({})".format( _array_repr( self )[11:-1] )
+            return "TAG_Int_Array({})".format( _array_repr( self )[19:-1] )
         else:
             return "TAG_Int_Array()"
 
@@ -565,6 +567,45 @@ class TAG_Int_Array( array, _BaseTag ):
         return tag
     def _w( self, o ):
         _wia( _cria( self ), o )
+
+class TAG_Long_Array( array, _BaseTag ):
+    """
+    Represents a TAG_Long_Array.
+    TAG_Long_Array is a signed 8-byte int array subclass and generally works the same way and in the same places any other sequence (tuple, list, array etc) would.
+
+    A TAG_Long_Array may not contain more than 2147483647 integers (16 GiB), however this is not enforced.
+    Because this is an array of signed 8-byte integers, its values are limited to a signed 8-byte integer's range: [-9223372036854775808, 9223372036854775807].
+    """
+    tagType     = TAG_LONG_ARRAY
+    isLongArray = True
+    isSequence  = True
+
+    __slots__ = ()
+
+    #array implements __new__ rather than __init__
+    def __new__( cls, *args, **kwargs ):
+        return _array_new( cls, "q", *args, **kwargs )
+
+    def __repr__( self ):
+        if len( self ) > 0:
+            return "TAG_Long_Array({})".format( _array_repr( self )[20:-1] )
+        else:
+            return "TAG_Long_Array()"
+
+    rget = _rget_leaf
+
+    def _p( self, name, depth, maxdepth, maxlen, fn ):
+        l = len( self )
+        fn( "{}TAG_Long_Array{}: [{:d} long{}]".format( "    "*depth, name, l, "s" if l != 1 else "" ) )
+    def _r( i ):
+        tag = TAG_Long_Array()
+        l = _rah( i )
+        if l > 0:
+            tag.fromfile( i, l )
+            _bm( tag )
+        return tag
+    def _w( self, o ):
+        _wla( _crla( self ), o )
 
 class TAG_List( list, _BaseTag ):
     """
@@ -631,6 +672,7 @@ class TAG_List( list, _BaseTag ):
     #list     = (outside of class)
     #compound = (outside of class)
     intarray  = _makeTagAppender( "intarray",  TAG_Int_Array  )
+    longarray = _makeTagAppender( "longarray", TAG_Long_Array )
 
     insert_byte      = _makeTagInserter( "insert_byte",      TAG_Byte       )
     insert_short     = _makeTagInserter( "insert_short",     TAG_Short      )
@@ -643,6 +685,7 @@ class TAG_List( list, _BaseTag ):
     #insert_list     = (outside of class)
     #insert_compound = (outside of class)
     insert_intarray  = _makeTagInserter( "insert_intarray",  TAG_Int_Array  )
+    insert_longarray = _makeTagInserter( "insert_longarray", TAG_Long_Array )
 
     def __iadd__( self, value ):
         if len( self ) > 0:
@@ -787,7 +830,7 @@ class TAG_List( list, _BaseTag ):
                 if t is None:
                     raise ConversionError( value )
                 value = t( value )
-                t = t.tagType
+                t = value.tagType
             #Update the list tagType
             self.listTagType = t
         #List is non-empty, value isn't a tag or is a tag of the wrong type
@@ -913,6 +956,7 @@ class TAG_Compound( OrderedDict, _BaseTag ):
     list      = _makeTagSetter( "list",      TAG_List       )
     #compound = (outside of class)
     intarray  = _makeTagSetter( "intarray",  TAG_Int_Array  )
+    longarray = _makeTagSetter( "longarray", TAG_Long_Array )
 
     setdefault_byte      = _makeTagSetDefault( "setdefault_byte",      TAG_Byte       )
     setdefault_short     = _makeTagSetDefault( "setdefault_short",     TAG_Short      )
@@ -925,6 +969,7 @@ class TAG_Compound( OrderedDict, _BaseTag ):
     setdefault_list      = _makeTagSetDefault( "setdefault_list",      TAG_List       )
     #setdefault_compound = (outside of class)
     setdefault_intarray  = _makeTagSetDefault( "setdefault_intarray",  TAG_Int_Array  )
+    setdefault_longarray = _makeTagSetDefault( "setdefault_longarray", TAG_Long_Array )
 
     def copy( self ):
         return TAG_Compound( self )
@@ -1136,8 +1181,24 @@ _TAGCLASS = (
     TAG_String,     #TAG_STRING
     TAG_List,       #TAG_LIST
     TAG_Compound,   #TAG_COMPOUND
-    TAG_Int_Array   #TAG_INT_ARRAY
+    TAG_Int_Array,  #TAG_INT_ARRAY
+    TAG_Long_Array  #TAG_LONG_ARRAY
 )
+
+#A function that takes a Python array and (depending on the array's typecode) returns a copy of it as a new TAG_Int_Array or TAG_Long_Array.
+#In the _TAGMAP dict below, we map Python arrays to this function instead of a singular tag class because there are multiple possible tag classes
+#and some logic is needed to deduce the appropriate one.
+#If the typecode is SIGNED_INT_TYPE ( "i" or "l", whichever was selected in shared.py) then a TAG_Int_Array is returned.
+#If the typecode is "q", then a TAG_Long_Array is returned.
+#Otherwise, a ConversionError() is raised.
+def _arrayToTag( a ):
+    t = a.typecode
+    if t == SIGNED_INT_TYPE:
+        return TAG_Int_Array( a )
+    elif t == "q":
+        return TAG_Long_Array( a )
+    else:
+        raise ConversionError( a )
 
 #Mapping of python types -> tag classes.
 #NBT doesn't have a boolean type. Instead, a TAG_Byte with a value of 0 for False and 1 for True is usually used instead.
@@ -1155,7 +1216,7 @@ _TAGMAP = {
     tuple:       TAG_List,
     dict:        TAG_Compound,
     OrderedDict: TAG_Compound,
-    array:       TAG_Int_Array
+    array:       _arrayToTag,
 }
 
 def read( source, compression="gzip", target=None, create=False ):

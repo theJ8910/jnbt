@@ -133,7 +133,7 @@ class NBTHandler:
         """
         Called when the parser reads one or more integers from the current TAG_Int_Array.
 
-        values will be an array of signed 4-byte integers.
+        values will be an array of signed 4-byte ints.
 
         Depending on how many integers are in the TAG_Int_Array and how the parser is configured, the parser may call this method several times until all the integers in the array are read.
         """
@@ -141,6 +141,26 @@ class NBTHandler:
     def endIntArray( self ):
         """
         Called when the end of a TAG_Int_Array is parsed.
+        """
+        pass
+    def startLongArray( self, length ):
+        """
+        Called when the start of a TAG_Long_Array is parsed.
+
+        length indicates how many longs are stored in the current TAG_Long_Array. It will be an int in the range [0, 2147483647].
+        """
+        pass
+    def longs( self, values ):
+        """
+        Called when the parser reads one or more longs from the current TAG_Long_Array.
+
+        values will be an array of signed 8-byte ints.
+
+        Depending on how many longs are in the TAG_Long_Array and how the parser is configured, the parser may call this method several times until all the longs in the array are read.
+        """
+    def endLongArray( self ):
+        """
+        Called when the end of a TAG_Long_Array is parsed.
         """
         pass
 
@@ -193,3 +213,5 @@ class PrintNBTHandler( NBTHandler ):
         print( self._is + "}" )
     def startIntArray( self, length ):
         print( "{}TAG_Int_Array{}: [{:d} int{}]".format( self._is, _tns( self._n ), length, "s" if length != 1 else "" ) )
+    def startLongArray( self, length ):
+        print( "{}TAG_Long_Array{}: [{:d} long{}]".format( self._is, _tns( self._n ), length, "s" if length != 1 else "" ) )

@@ -2,47 +2,47 @@ import unittest
 
 import jnbt
 
-from jnbt.shared import s4array
+from jnbt.shared import s4array, s8array
 
 expected = (
     ( "start",                                            ),
-    ( "name",          jnbt.TAG_COMPOUND,   "Example!"    ),
+    ( "name",           jnbt.TAG_COMPOUND,   "Example!"   ),
     ( "startCompound",                                    ),
-    ( "name",          jnbt.TAG_BYTE,       "byte"        ),
-    ( "byte",          -3                                 ),
-    ( "name",          jnbt.TAG_SHORT,      "short"       ),
-    ( "short",         -500                               ),
-    ( "name",          jnbt.TAG_INT,        "int"         ),
-    ( "int",           -1234567                           ),
-    ( "name",          jnbt.TAG_LONG,       "long"        ),
-    ( "long",          -12345678910111213                 ),
-    ( "name",          jnbt.TAG_FLOAT,      "float"       ),
-    ( "float",         52.358924865722656                 ),
-    ( "name",          jnbt.TAG_DOUBLE,     "double"      ),
-    ( "double",        123.456789101112                   ),
-    ( "name",          jnbt.TAG_STRING,     "string"      ),
-    ( "string",        "This is a string!"                ),
-    ( "name",          jnbt.TAG_COMPOUND,   "compound"    ),
+    ( "name",           jnbt.TAG_BYTE,       "byte"       ),
+    ( "byte",           -3                                ),
+    ( "name",           jnbt.TAG_SHORT,      "short"      ),
+    ( "short",          -500                              ),
+    ( "name",           jnbt.TAG_INT,        "int"        ),
+    ( "int",            -1234567                          ),
+    ( "name",           jnbt.TAG_LONG,       "long"       ),
+    ( "long",           -12345678910111213                ),
+    ( "name",           jnbt.TAG_FLOAT,      "float"      ),
+    ( "float",          52.358924865722656                ),
+    ( "name",           jnbt.TAG_DOUBLE,     "double"     ),
+    ( "double",         123.456789101112                  ),
+    ( "name",           jnbt.TAG_STRING,     "string"     ),
+    ( "string",         "This is a string!"               ),
+    ( "name",           jnbt.TAG_COMPOUND,   "compound"   ),
     ( "startCompound",                                    ),
-    ( "name",          jnbt.TAG_STRING,     "name"        ),
-    ( "string",        "Jeff"                             ),
-    ( "name",          jnbt.TAG_INT,        "id"          ),
-    ( "int",           5                                  ),
+    ( "name",           jnbt.TAG_STRING,     "name"       ),
+    ( "string",         "Jeff"                            ),
+    ( "name",           jnbt.TAG_INT,        "id"         ),
+    ( "int",            5                                 ),
     ( "endCompound",                                      ),
-    ( "name",          jnbt.TAG_LIST,       "list"        ),
-    ( "startList",     jnbt.TAG_STRING,     5             ),
-    ( "string",        "Hey!"                             ),
-    ( "string",        "Check"                            ),
-    ( "string",        "out"                              ),
-    ( "string",        "these"                            ),
-    ( "string",        "strings!"                         ),
+    ( "name",           jnbt.TAG_LIST,       "list"       ),
+    ( "startList",      jnbt.TAG_STRING,     5            ),
+    ( "string",         "Hey!"                            ),
+    ( "string",         "Check"                           ),
+    ( "string",         "out"                             ),
+    ( "string",         "these"                           ),
+    ( "string",         "strings!"                        ),
     ( "endList",                                          ),
-    ( "name",          jnbt.TAG_LIST,       "list2"       ),
-    ( "startList",     jnbt.TAG_FLOAT,      4             ),
-    ( "float",         10.2                               ),
-    ( "float",         15.6                               ),
-    ( "float",         17.1                               ),
-    ( "float",         -1.12                              ),
+    ( "name",           jnbt.TAG_LIST,       "list2"      ),
+    ( "startList",      jnbt.TAG_FLOAT,      4            ),
+    ( "float",          10.2                              ),
+    ( "float",          15.6                              ),
+    ( "float",          17.1                              ),
+    ( "float",          -1.12                             ),
     ( "endList",                                          ),
     ( "name",           jnbt.TAG_BYTE_ARRAY, "bytearray"  ),
     ( "startByteArray", 4                                 ),
@@ -60,6 +60,14 @@ expected = (
     ( "startIntArray",  4                                 ),
     ( "ints",           s4array( ( 9, 10, 11, 12 ) )      ),
     ( "endIntArray",                                      ),
+    ( "name",           jnbt.TAG_LONG_ARRAY, "longarray"  ),
+    ( "startLongArray", 4                                 ),
+    ( "longs",          s8array( ( 13, 14, 15, 16 ) )     ),
+    ( "endLongArray",                                     ),
+    ( "name",           jnbt.TAG_LONG_ARRAY, "longarray2" ),
+    ( "startLongArray", 4                                 ),
+    ( "longs",          s8array( ( 17, 18, 19, 20 ) )     ),
+    ( "endLongArray",                                     ),
     ( "endCompound",                                      ),
     ( "end",                                              )
 )
@@ -124,6 +132,12 @@ class TestNBTHandler( jnbt.NBTHandler ):
         self._check( "ints", values )
     def endIntArray( self ):
         self._check( "endIntArray" )
+    def startLongArray( self, length ):
+        self._check( "startLongArray", length )
+    def longs( self, values ):
+        self._check( "longs", values )
+    def endLongArray( self ):
+        self._check( "endLongArray" )
 
 
 class TestJNBT( unittest.TestCase ):
@@ -161,6 +175,11 @@ class TestJNBT( unittest.TestCase ):
             w.ints( (  9, 10 ) )
             w.ints( ( 11, 12 ) )
             w.endIntArray()
+            w.longarray( "longarray", ( 13, 14, 15, 16 ) )
+            w.startLongArray( "longarray2", 4 )
+            w.longs( ( 17, 18 ) )
+            w.longs( ( 19, 20 ) )
+            w.endLongArray()
             w.end()
 
 if __name__ == "__main__":

@@ -5,10 +5,9 @@ from io import BytesIO
 
 from jnbt.shared import (
     WrongTagError, OutOfBoundsError,
-    read as _r, readInts as _ris, readString as _rst, readTagListHeader as _rlh, readArrayHeader as _rah, assertValidTagType as _avtt,
+    read as _r, readInts as _ris, readLongs as _rls, readString as _rst, readTagListHeader as _rlh, readArrayHeader as _rah, assertValidTagType as _avtt,
     _NT, _B, _S, _I, _L, _F, _D,
-    TAG_END, TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG, TAG_FLOAT, TAG_DOUBLE, TAG_BYTE_ARRAY, TAG_STRING, TAG_LIST, TAG_COMPOUND, TAG_INT_ARRAY,
-    TAG_COUNT
+    TAG_END, TAG_COMPOUND
 )
 
 class _StopParsingNBT( Exception ):
@@ -121,7 +120,7 @@ def parseTagByteArray( input, handler ):
     """
     Reads a TAG_Byte_Array from input.
     Calls handler.startByteArray(), passing the length of the array.
-    Repeatedly reads up to 4KB from the array and calls handler.bytes(), passing the bytes that were read as an argument.
+    Repeatedly reads up to 4KiB from the array and calls handler.bytes(), passing the bytes that were read as an argument.
     Finally, calls handler.endByteArray().
     """
     length = _rah( input )
@@ -191,7 +190,7 @@ def parseTagIntArray( input, handler ):
     """
     Reads a TAG_Int_Array from input.
     Calls handler.startIntArray(), passing the length of the array.
-    Repeatedly reads up to 4KB (1024 integers) from input and calls handler.ints(), passing the ints that were read as an argument.
+    Repeatedly reads up to 4KiB (1024 integers) from input and calls handler.ints(), passing the ints that were read as an argument.
     Finally, calls handler.endIntArray().
     """
     #Note: length refers to the number of integers in the array, NOT the number of bytes.
@@ -209,6 +208,28 @@ def parseTagIntArray( input, handler ):
 
     handler.endIntArray()
 
+def parseTagLongArray( input, handler ):
+    """
+    Reads a TAG_Long_Array from input.
+    Calls handler.startLongArray(), passing the length of the array.
+    Repeatedly reads up to 4KiB (512 longs) from input and calls handler.longs(), passing the longs that were read as an argument.
+    Finally, calls handler.endLongArray().
+    """
+    #Note: length refers to the number of longs in the array, NOT the number of bytes.
+    #Since each long is 8 bytes each, multiply this number by 8 to get the number of bytes.
+    length = _rah( input )
+
+    handler.startLongArray( length )
+
+    #Read at most 512 longs (4096 bytes) at a time
+    if length > 0:
+        while length > 512:
+            handler.longs( _rls( input, 512 ) )
+            length -= 512
+        handler.longs( _rls( input, length ) )
+
+    handler.endLongArray()
+
 #List of functions (indexed by tag type) that parse the payloads for their respective tags.
 #I'd prefer to put this at the top with the rest of the constants, but the parse functions aren't declared until the bottom of the file.
 TAG_PARSERS = (
@@ -223,5 +244,6 @@ TAG_PARSERS = (
     parseTagString,     #TAG_STRING
     parseTagList,       #TAG_LIST
     parseTagCompound,   #TAG_COMPOUND
-    parseTagIntArray    #TAG_INT_ARRAY
+    parseTagIntArray,   #TAG_INT_ARRAY
+    parseTagLongArray   #TAG_LONG_ARRAY
 )

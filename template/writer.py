@@ -2,24 +2,24 @@ import gzip
 import zlib
 
 from collections import deque
-from io import BytesIO
-from types import MethodType
+from io          import BytesIO
+from types       import MethodType
 
 from jnbt.shared import (
     NBTFormatError, describeTag,
     #if safe
     WrongTagError, DuplicateNameError,
     #end
-    TAG_END, TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG, TAG_FLOAT, TAG_DOUBLE, TAG_BYTE_ARRAY, TAG_STRING, TAG_LIST, TAG_COMPOUND, TAG_INT_ARRAY,
+    TAG_END, TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG, TAG_FLOAT, TAG_DOUBLE, TAG_BYTE_ARRAY, TAG_STRING, TAG_LIST, TAG_COMPOUND, TAG_INT_ARRAY, TAG_LONG_ARRAY,
     TAG_COUNT,
 
     writeTagName       as _wtn, writeByte      as _wb,  writeShort    as _ws,
     writeInt           as _wi,  writeLong      as _wl,  writeFloat    as _wf,
     writeDouble        as _wd,  writeByteArray as _wba, writeString   as _wst,
     writeTagListHeader as _wlh, writeTagList   as _wlp, writeIntArray as _wia,
-    writeInts          as _wis,
+    writeInts          as _wis, writeLongArray as _wla, writeLongs    as _wls,
 
-    convertCopyReturnIntArray as _ccria,
+    convertCopyReturnIntArray as _ccria,  convertCopyReturnLongArray as _ccrla,
     #if safe
     assertValidTagType as _avtt,
     #end
@@ -71,9 +71,9 @@ class _NBTWriterBase:
         #A boolean indicating if the root TAG_Compound has been started yet.
         self._r = False
 
-        #For TAG_List, TAG_Byte_Array, and TAG_Int_Array, the number of tags/bytes/ints written so far.
+        #For TAG_List, TAG_Byte_Array, TAG_Int_Array, and TAG_Long_Array, the number of tags/bytes/ints/longs written so far.
         self._a = None
-        #For TAG_List, TAG_Byte_Array, and TAG_Int_Array, the number of tags/bytes/ints expected to be written.
+        #For TAG_List, TAG_Byte_Array, TAG_Int_Array, and TAG_Long_Array, the number of tags/bytes/ints/longs expected to be written.
         self._b = None
         #For TAG_List, the tag type of the list.
         #For TAG_Compound, the set of names that have been written so far.
@@ -94,13 +94,19 @@ class _NBTWriterBase:
         self._a = 0
         self._b = length
         self._c = tagType
-    def _pushI( self, b ):
+    def _pushIA( self, b ):
         """Push a new TAG_Int_Array context to the stack."""
         self._s.append( ( self.__class__, self._a, self._b ) )
         self.__class__ = _NBTWriterIntArray
         self._a = 0
         self._b = b
-    def _pushB( self, b ):
+    def _pushLA( self, b ):
+        """Push a new TAG_Long_Array context to the stack."""
+        self._s.append( ( self.__class__, self._a, self._b ) )
+        self.__class__ = _NBTWriterLongArray
+        self._a = 0
+        self._b = b
+    def _pushBA( self, b ):
         """Push a new TAG_Byte_Array context to the stack."""
         self._s.append( ( self.__class__, self._a, self._b ) )
         self.__class__ = _NBTWriterByteArray
@@ -115,11 +121,15 @@ class _NBTWriterBase:
         """Push a new TAG_List context to the stack."""
         self._s.append( self.__class__ )
         self.__class__ = _NBTWriterList
-    def _pushI( self ):
+    def _pushIA( self ):
         """Push a new TAG_Int_Array context to the stack."""
         self._s.append( self.__class__ )
         self.__class__ = _NBTWriterIntArray
-    def _pushB( self ):
+    def _pushLA( self ):
+        """Push a new TAG_Long_Array context to the stack."""
+        self._s.append( self.__class__ )
+        self.__class__ = _NBTWriterLongArray
+    def _pushBA( self ):
         """Push a new TAG_Byte_Array context to the stack."""
         self._s.append( self.__class__ )
         self.__class__ = _NBTWriterByteArray
@@ -312,7 +322,7 @@ class _NBTWriterBase:
         """
         Write a TAG_Int_Array consisting of the given values.
 
-        values is expected to be a sequence (tuple, list, etc) of integers in the range [-2147483648, 2147483647].
+        values is expected to be a sequence (tuple, list, etc) of ints in the range [-2147483648, 2147483647].
         """
         raise NBTFormatError( "A TAG_Int_Array cannot be created here." )
     def startIntArray( self, *args, **kwargs ):
@@ -335,7 +345,7 @@ class _NBTWriterBase:
         """
         Write the given values to the current TAG_Int_Array.
 
-        values is expected to be a sequence (tuple, list, etc) of integers in the range [-2147483648, 2147483647].
+        values is expected to be a sequence (tuple, list, etc) of ints in the range [-2147483648, 2147483647].
 
         This method may only be called between calls to the .startIntArray() and .endIntArray() methods.
         """
@@ -347,6 +357,45 @@ class _NBTWriterBase:
         This method may only be called in tandem with a prior call to .startIntArray().
         """
         raise NBTFormatError( "Attempted to end a TAG_Int_Array, but the current tag is not a TAG_Int_Array." )
+    def longarray( self, *args, **kwargs ):
+        """
+        Write a TAG_Long_Array consisting of the given values.
+
+        values is expected to be a sequence (tuple, list, etc) of ints in the range [-9223372036854775808, 9223372036854775807].
+        """
+        raise NBTFormatError( "A TAG_Long_Array cannot be created here." )
+    def startLongArray( self, *args, **kwargs ):
+        """
+        Start writing a TAG_Long_Array that will contain length elements.
+
+        length is expected to be an int in the range [0, 2147483647].
+
+        After calling the .startLongArray( length ) method, a total of length longs must be written via calls to the .longs() method.
+        Finally, the .endLongArray() method must be called to finish writing the long array.
+
+        Example:
+            writer.startLongArray( "my_longs", 16 )
+            writer.longs( ( 0, 1,  2,  3,  4,  5,  6,  7 ) )
+            writer.longs( ( 8, 9, 10, 11, 12, 13, 14, 15 ) )
+            writer.endLongArray()
+        """
+        raise NBTFormatError( "A TAG_Long_Array cannot be created here." )
+    def longs( self, *args, **kwargs ):
+        """
+        Write the given values to the current TAG_Long_Array.
+
+        values is expected to be a sequence (tuple, list, etc) of ints in the range [-9223372036854775808, 9223372036854775807].
+
+        This method may only be called between calls to the .startLongArray() and .endLongArray() methods.
+        """
+        raise NBTFormatError( "Attempted to write ints, but the current tag is not a TAG_Long_Array." )
+    def endLongArray( self, *args, **kwargs ):
+        """
+        Finish writing a TAG_Long_Array.
+
+        This method may only be called in tandem with a prior call to .startLongArray().
+        """
+        raise NBTFormatError( "Attempted to end a TAG_Long_Array, but the current tag is not a TAG_Long_Array." )
 
 class _NBTWriterCompound( _NBTWriterBase ):
     """
@@ -425,9 +474,9 @@ class _NBTWriterCompound( _NBTWriterBase ):
         _wtn( TAG_BYTE_ARRAY, name, o )
         _wi( length, o )
         #if safe
-        self._pushB( length )
+        self._pushBA( length )
         #else
-        self._pushB()
+        self._pushBA()
         #end
 
     def string( self, name, value ):
@@ -496,9 +545,33 @@ class _NBTWriterCompound( _NBTWriterBase ):
         _wtn( TAG_INT_ARRAY, name, o )
         _wi( length, o )
         #if safe
-        self._pushI( length )
+        self._pushIA( length )
         #else
-        self._pushI()
+        self._pushIA()
+        #end
+
+    def longarray( self, name, values ):
+        #if safe
+        self._ac( name )
+        #end
+        values = _ccrla( values )
+        o = self._o
+        _wtn( TAG_LONG_ARRAY, name, o )
+        _wla( values, o )
+
+    def startLongArray( self, name, length ):
+        #if safe
+        if length < 0 or length > 2147483647:
+            raise OutOfBoundsError( length, 0, 2147483647 )
+        self._ac( name )
+        #end
+        o = self._o
+        _wtn( TAG_LONG_ARRAY, name, o )
+        _wi( length, o )
+        #if safe
+        self._pushLA( length )
+        #else
+        self._pushLA()
         #end
 
 class _NBTWriterList( _NBTWriterBase ):
@@ -566,9 +639,9 @@ class _NBTWriterList( _NBTWriterBase ):
         #end
         _wi( length, self._o )
         #if safe
-        self._pushB( length )
+        self._pushBA( length )
         #else
-        self._pushB()
+        self._pushBA()
         #end
     def string( self, value ):
         #if safe
@@ -627,9 +700,28 @@ class _NBTWriterList( _NBTWriterBase ):
         #end
         _wi( length, self._o )
         #if safe
-        self._pushI( length )
+        self._pushIA( length )
         #else
-        self._pushI()
+        self._pushIA()
+        #end
+
+    def longarray( self, values ):
+        #if safe
+        self._al( TAG_LONG_ARRAY )
+        #end
+        _wla( _ccrla( values ), self._o )
+
+    def startLongArray( self, length ):
+        #if safe
+        if length < 0 or length > 2147483647:
+            raise OutOfBoundsError( length, 0, 2147483647 )
+        self._al( TAG_LONG_ARRAY )
+        #end
+        _wi( length, self._o )
+        #if safe
+        self._pushLA( length )
+        #else
+        self._pushLA()
         #end
 
 class _NBTWriterByteArray( _NBTWriterBase ):
@@ -672,6 +764,29 @@ class _NBTWriterIntArray( _NBTWriterBase ):
         b = self._b
         if a != b:
             raise NBTFormatError( "Expected {:d} ints, but only {:d} ints were written.".format( b, a ) )
+        self.__class__, self._a, self._b = self._s.pop()
+        #else
+        self.__class__ = self._s.pop()
+        #end
+
+class _NBTWriterLongArray( _NBTWriterBase ):
+    """Context while writing a TAG_Long_Array."""
+    def longs( self, values ):
+        #if safe
+        a = self._a + len( values )
+        b = self._b
+        if a > b:
+            raise NBTFormatError( "More than {:d} longs were written.".format( b ) )
+        self._a = a
+        #end
+        _wls( _ccrla( values ), self._o )
+
+    def endLongArray( self ):
+        #if safe
+        a = self._a
+        b = self._b
+        if a != b:
+            raise NBTFormatError( "Expected {:d} longs, but only {:d} longs were written.".format( b, a ) )
         self.__class__, self._a, self._b = self._s.pop()
         #else
         self.__class__ = self._s.pop()

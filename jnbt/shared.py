@@ -19,6 +19,7 @@ TAG_STRING     = 8  #A TAG_String stores a UTF-8 encoded string. It starts with 
 TAG_LIST       = 9  #A TAG_List stores several tags of the same type. The payload consists of a single byte encoding the tagType, followed by the length of the list (a 4-byte big-endian signed integer), followed by that many payloads of the specified tag.
 TAG_COMPOUND   = 10 #A TAG_Compound stored several uniquely-named tags of any type. The payload consists of several pairs of named tag headers + tag payloads and is terminated by a TAG_End (null byte).
 TAG_INT_ARRAY  = 11 #A TAG_Int_Array's payload consists of the length of the array (a 4-byte big-endian signed integer) followed by that many 4-byte big-endian signed integers.
+TAG_LONG_ARRAY = 12 #A TAG_Long_Array's payload consists of the length of the array (a 4-byte big-endian signed integer) followed by that many 8-byte big-endian signed integers.
 
 #Internal names of tags (indexed by tag type) as defined by the NBT specification
 TAG_NAMES = (
@@ -33,7 +34,8 @@ TAG_NAMES = (
     "TAG_String",
     "TAG_List",
     "TAG_Compound",
-    "TAG_Int_Array"
+    "TAG_Int_Array",
+    "TAG_Long_Array"
 )
 
 #Total number of tags supported by this version of the library.
@@ -133,7 +135,9 @@ class ConversionError( NBTFormatError ):
         ls = doc.list( "myList", [ 10, 11, 12 ], TAG_Int )   #...or better yet, this
     """
     def __str__( self ):
-        return "Unable to convert value of type \"{}\" to a tag.".format( self.args[0].__class__.__name__ )
+        a0 = self.args[0]
+        a0cn = a0.__class__.__name__
+        return "Unable to convert value of type \"{}\" to a tag.".format( "{}('{}')".format( a0cn, a0.typecode ) if isinstance( a0, array ) else a0cn )
 
 class DuplicateNameError( NBTFormatError ):
     """
@@ -160,7 +164,7 @@ class OutOfBoundsError( NBTFormatError ):
 
     This exception is raised when parsing or writing a value that is outside of the valid range for that type.
     This error can be raised for integral types (byte, short, int, long) if the type cannot represent the value,
-    or for tag names and sequence types (string, list, bytearray, intarray) if the length is negative or too long to be represented.
+    or for tag names and sequence types (string, list, bytearray, intarray, longarray) if the length is negative or too long to be represented.
     """
     def __str__( self ):
         return "Value {:d} is outside of expected range [{:d},{:d}].".format( *self.args )
@@ -354,7 +358,7 @@ def readTagListHeader( i ):
     p = _TL.unpack( read( i, 5 ) )
     assertValidTagType( p[0] )
     if p[1] < 0:
-        raise OutOfBoundsError( 0, 2147483647 );
+        raise OutOfBoundsError( 0, 2147483647 )
     return p
 
 #_wlh
@@ -376,11 +380,17 @@ def writeIntArray( v, o ):
     o.write( _I.pack( len( v ) ) )
     writeInts( v, o )
 
+#_wla
+def writeLongArray( v, o ):
+    """Writes a TAG_Long_Array payload."""
+    o.write( _I.pack( len( v ) ) )
+    writeLongs( v, o )
+
 #_rah
 def readArrayHeader( i ):
     """
-    Reads a TAG_Byte_Array or TAG_Int_Array header.
-    Returns the length (in bytes and ints, respectively) of the array.
+    Reads a TAG_Byte_Array, TAG_Int_Array, or TAG_Long_Array header.
+    Returns the length (in bytes, ints, and longs, respectively) of the array.
     If the length is negative, raises an OutOfBoundsError.
     """
     l = _I.unpack( read( i, 4 ) )[0]
@@ -397,6 +407,27 @@ def readUnsignedByte( i ):
 def readUnsignedInt( i ):
     return _UI.unpack( read( i, 4 ) )[0]
 
+#_ctla
+def convertToLongArray( v ):
+    """Converts the given iterable of ints, v, to an array of signed 8-byte integers if it isn't one already."""
+    if isinstance( v, array ) and v.typecode == "q":
+        return v
+    return array( "q", v )
+
+def assertLongArray( a ):
+    """Asserts that a is an array of signed 8-byte integers. Raises TypeError if it is not."""
+    if type( a ) is not array:
+        raise TypeError( "Wrong type for values: expected array(\"q\")" )
+    if a.typecode != SIGNED_INT_TYPE:
+        raise TypeError( "Wrong array typecode for values: expected \"q\", got \"{}\"".format( a.typecode ) )
+
+def s8array( *args ):
+    """
+    s8array([initializer]) -> array("q" [, initializer])
+
+    Returns an array.array of signed 8-byte integers, optionally initialized with a given initializer.
+    """
+    return array( "q", *args )
 
 #write* methods indexed by tagType
 _WRITERS = (
@@ -411,7 +442,8 @@ _WRITERS = (
     writeString,    #TAG_String
     None,           #TAG_List
     None,           #TAG_Compound
-    writeIntArray   #TAG_Int_Array
+    writeIntArray,  #TAG_Int_Array
+    writeLongArray  #TAG_Long_Array
 )
 
 #Compile platform-dependent functions during loadtime to avoid runtime lookup costs.
@@ -420,6 +452,8 @@ _WRITERS = (
 #array assumes native-endianness in the data it reads to populate itself.
 #Therefore, to properly read integers with big-endian ordering on little-endian systems
 #we must reverse the endianness with byteswap().
+#True if system is little endian, False otherwise.
+SYS_IS_LITTLE_ENDIAN = ( sys.byteorder == "little" )
 exec(
 """
 #_ris
@@ -441,10 +475,29 @@ def readUnsignedInts( i, n ):
     a.fromfile( i, n )
     {BYTESWAP}
     return a
+
+#_rls
+def readLongs( i, n ):
+    \"\"\"
+    Reads n signed, big-endian, 8-byte integers from i (a readable file-like object) into an array and returns it.
+    \"\"\"
+    a = array( "q" )
+    a.fromfile( i, n )
+    {BYTESWAP}
+    return a
+
 #_wis
 def writeInts( a, o ):
     \"\"\"
     Writes signed, big-endian, 4-byte integers stored in the given array, a, to the given writable file-like object, o.
+    \"\"\"
+    {BYTESWAP}
+    a.tofile( o )
+
+#_wls
+def writeLongs( a, o ):
+    \"\"\"
+    Writes signed, big-endian, 8-byte integers stored in the given array, a, to the given writable file-like object, o.
     \"\"\"
     {BYTESWAP}
     a.tofile( o )
@@ -456,8 +509,19 @@ def copyReturnIntArray( a ):
     If this is a big-endian system, returns it.
     If this is a little-endian system, returns a copy of it.
     \"\"\"
-    {COPY}
+    {COPY_INTS}
     return a
+
+#_crla
+def copyReturnLongArray( a ):
+    \"\"\"
+    Takes an array of signed 8-byte integers.
+    If this is a big-endian system, returns it.
+    If this is a little-endian system, returns a copy of it.
+    \"\"\"
+    {COPY_LONGS}
+    return a
+
 #_ccria
 def convertCopyReturnIntArray( a ):
     \"\"\"
@@ -468,10 +532,24 @@ def convertCopyReturnIntArray( a ):
     Otherwise, converts a to a signed 4-byte integer array and returns the array.
     \"\"\"
     if isinstance( a, array ) and a.typecode == "{SIGNED_INT_TYPE}":
-        {COPY}
+        {COPY_INTS}
         return a
     else:
         return array( "{SIGNED_INT_TYPE}", a )
+#_ccrla
+def convertCopyReturnLongArray( a ):
+    \"\"\"
+    Takes an iterable, a.
+    If a is an array of signed 8-byte integers:
+        ...and this is a big-endian system, returns the array.
+        ...and this is a little-endian system, returns a copy of the array.
+    Otherwise, converts a to a signed 8-byte integer array and returns the array.
+    \"\"\"
+    if isinstance( a, array ) and a.typecode == "q":
+        {COPY_LONGS}
+        return a
+    else:
+        return array( "q", a )
 #_bm
 def byteswapMaybe( a ):
     \"\"\"
@@ -513,7 +591,8 @@ def u4array( *args ):
 """.format(
         SIGNED_INT_TYPE  = SIGNED_INT_TYPE,
         UNSIGNED_INT_TYPE= UNSIGNED_INT_TYPE,
-        BYTESWAP         = "a.byteswap()" if sys.byteorder == "little" else "",
-        COPY             = "a = array(\"" + SIGNED_INT_TYPE + "\", a)" if sys.byteorder == "little" else ""
+        BYTESWAP         = "a.byteswap()"                              if SYS_IS_LITTLE_ENDIAN else "",
+        COPY_INTS        = "a = array(\"" + SIGNED_INT_TYPE + "\", a)" if SYS_IS_LITTLE_ENDIAN else "",
+        COPY_LONGS       = "a = array(\"q\", a)"                       if SYS_IS_LITTLE_ENDIAN else ""
     )
 )
