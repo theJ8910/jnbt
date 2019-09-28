@@ -1,4 +1,5 @@
 from setuptools import setup, Command
+from jnbt       import VERSION
 
 class Codegen( Command ):
     user_options = [
@@ -29,10 +30,10 @@ class Codegen( Command ):
 
 setup(
     name        = "jnbt",
-    version     = "1.0.17",
+    version     = VERSION,
     author      = "theJ89",
     description = "theJ89's NBT Library",
-    packages    = [ "jnbt" ],
+    packages    = [ "jnbt", "jnbt.mc", "jnbt.mc.world" ],
     zip_safe    = True,
     cmdclass = {
         "codegen": Codegen

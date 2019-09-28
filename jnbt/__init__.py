@@ -3,6 +3,8 @@ JNBT is a library for reading and writing Named Binary Tag (NBT) data for Python
 It features both DOM and SAX-style parsing and writing, as well as utilities to read world data (e.g. world save directories and Minecraft Anvil regions).
 """
 
+VERSION = "1.0.18"
+
 #NBT Tag Types, Exceptions
 from jnbt.shared import (
     TAG_END, TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG, TAG_FLOAT, TAG_DOUBLE, TAG_BYTE_ARRAY, TAG_STRING, TAG_LIST, TAG_COMPOUND, TAG_INT_ARRAY, TAG_LONG_ARRAY,
@@ -30,6 +32,7 @@ from jnbt.mc.world import DIM_NETHER, DIM_OVERWORLD, DIM_END, getWorld, iterWorl
 
 #Export everything we imported above
 __all__ = [
+    "VERSION",
     "TAG_END", "TAG_BYTE", "TAG_SHORT", "TAG_INT", "TAG_LONG", "TAG_FLOAT", "TAG_DOUBLE", "TAG_BYTE_ARRAY", "TAG_STRING", "TAG_LIST", "TAG_COMPOUND", "TAG_INT_ARRAY", "TAG_LONG_ARRAY",
     "TAG_COUNT",
     "NBTFormatError", "WrongTagError", "ConversionError", "DuplicateNameError", "UnknownTagTypeError", "OutOfBoundsError",
