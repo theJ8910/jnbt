@@ -8,7 +8,7 @@ from io import BytesIO
 
 from jnbt           import tag
 from jnbt.shared    import scandir, read as _r, readUnsignedByte as _rub, readUnsignedInt as _rui, readUnsignedInts as _ruis
-from jnbt.mc.data   import _blockIDtoName
+from jnbt.mc.data   import _blockIDtoName, _blockNameToID, _itemIDtoName, _itemNameToID
 from jnbt.mc.player import Player
 
 #Regular expression that matches player save files in <world>/playerdata; i.e. filenames of the form "{8}-{4}-{4}-{4}-{12}.dat", where {n} is a grouping of bytes that makes up the player's UUID, expressed as n hex digits.
@@ -38,9 +38,18 @@ LVLFMT_TO_NAME = (
     "anvil"
 )
 
+#Dimension IDs for the Overworld, Nether, and End
+DIM_NETHER    = -1
+DIM_OVERWORLD =  0
+DIM_END       =  1
+
+#Sentinel value for lazy evaluation fields that have not yet been evaluated.
+#When such a field is queried, its value will be computed, cached and returned:
+CACHE = object()
+
 #A world can have several dimensions.
 #A dimension can have several regions.
-#A region can have several chunks.
+#A region is a 32x32 chunk area (overall 512x256x512 blocks), sparsely populated with chunks.
 #A chunk has 16 sections (overall 16x256x16 blocks).
 #Each section has 16x16x16 blocks.
 
@@ -102,7 +111,7 @@ class _BaseWorld:
     Represents an entire Minecraft world.
     A world consists of several dimensions (such as the Overworld, Nether, and The End), and global metadata (level.dat, player saves, etc).
     """
-    __slots__ = ( "path", "_dimensions", "_leveldata", "_blockIDtoName", "_blockNameToID", "_players" )
+    __slots__ = ( "path", "_dimensions", "_leveldata", "_blockIDtoName", "_blockNameToID", "_itemIDtoName", "_itemNameToID", "_player", "_players" )
 
     #Subclasses should override these
     formatid = None
@@ -115,11 +124,14 @@ class _BaseWorld:
         path is the path to the world's directory.
         """
         self.path           = path
-        self._dimensions    = None
-        self._leveldata     = None
-        self._blockIDtoName = None
-        self._blockNameToID = None
-        self._players       = None
+        self._dimensions    = CACHE
+        self._leveldata     = CACHE
+        self._blockIDtoName = CACHE
+        self._blockNameToID = CACHE
+        self._itemIDtoName  = CACHE
+        self._itemNameToID  = CACHE
+        self._player        = CACHE
+        self._players       = CACHE
 
     def iterDimensions( self ):
         """Iterates over every dimension in this world."""
@@ -156,13 +168,13 @@ class _BaseWorld:
         for dimension in self.iterDimensions():
             yield from dimension.iterRegions()
 
-    def iterChunks( self, content=True ):
+    def iterChunks( self, *, content=True ):
         """
         Iterates over every chunk in every region in every dimension in this world.
         See help( jnbt.Region.getChunk ) for information on content.
         """
         for dimension in self.iterDimensions():
-            yield from dimension.iterChunks( content )
+            yield from dimension.iterChunks( content=content )
 
     def iterBlocks( self ):
         """Iterates over every block in every chunk in every region in every dimension in this world."""
@@ -204,25 +216,31 @@ class _BaseWorld:
         Return the dimension with the given ID, or None if this dimension doesn't exist.
         id is expected to be an int.
 
-        If you're getting a vanilla dimension, you can use the jnbt.DIM_* enums for more readable code:
-            world.getDimension( jnbt.DIM_OVERWORLD )
+        If you're getting a vanilla dimension, you can use these properties for more readable code:
+            world.nether
+            world.overworld
+            world.end
         """
-        #Return the cached Dimension object, if any
+        #Return the cached value for this dimension ID, if any
         dims = self._dimensions
-        if dims is None:
+        if dims is CACHE:
             self._dimensions = dims = {}
         else:
-            d = dims.get( id )
-            if d is not None:
+            d = dims.get( id, CACHE )
+            if d is not CACHE:
                 return d
 
         #Check if this world has a dimension with this id
         path = os.path.join( self.path, "DIM{:d}".format( id ) ) if id != 0 else self.path
-        if not os.path.isdir( path ):
-            return None
 
-        #Create a new Dimension object, cache it, then return it
-        d = self._clsDimension( path, self, id )
+        #If it exists, cache a new Dimension object
+        if os.path.isdir( path ):
+            d = self._clsDimension( path, self, id )
+        #If it doesn't exist, cache None so we don't have to check next time:
+        else:
+            d = None
+
+        #Cache the value, then return it
         dims[id] = d
         return d
 
@@ -231,7 +249,7 @@ class _BaseWorld:
         Return a dictionary of dimensions in this world keyed by dimension ID.
         """
         dimensions = self._dimensions
-        if dimensions is None:
+        if dimensions is CACHE:
             dimensions = {}
 
             for d in self.iterDimensions():
@@ -244,14 +262,32 @@ class _BaseWorld:
     def getLevelData( self ):
         """Return this world's level.dat as a NBTDocument."""
         ld = self._leveldata
-        if ld is None:
+        if ld is CACHE:
             path = os.path.join( self.path, "level.dat" )
             if os.path.isfile( path ):
-                self._leveldata = ld = tag.read( path )
+                ld = tag.read( path )
             else:
-                return None
+                ld = None
+            self._leveldata = ld
         return ld
     leveldata = property( getLevelData )
+
+    def _getFMLItemData( self ):
+        """
+        Returns the Forge Mod Loader item data for this world, or None if this data doesn't exist (e.g. because the world isn't a modded world).
+        The world's FML item data provides a list of numerical ID / string ID pairs that associate the two with one another.
+        This loads the level.dat for this world if it hasn't been loaded yet which may be somewhat slow.
+        """
+        #Load the level.dat for this world.
+        tag = self.getLevelData()
+        if tag is None:
+            return None
+        #Check if it contains a tag at FML/ItemData:
+        tag = tag.rget("FML", "ItemData")
+        if tag is None:
+            return None
+
+        return tag
 
     def getBlockName( self, id ):
         """
@@ -261,47 +297,113 @@ class _BaseWorld:
         This function may be expensive the first time it is called because it must load the world's leveldata and create id<->name dictionaries.
         """
         bIDtoN = self._blockIDtoName
-        if bIDtoN is None:
-            bIDtoN = {}
-            bNtoID = {}
+        if bIDtoN is CACHE:
+            fmlItemData = self._getFMLItemData()
 
-            #Load the level.dat for this world.
-            #If this is a modded world, we can get names for blocks and items from FML.ItemData
-            tag = self.getLevelData()
-            if tag is None:
-                return None
-            tag = tag.rget("FML", "ItemData")
-            if tag is None:
-                return None
-            for entry in tag:
-                #Key is the internal name of the block/item, prepended with "\x01" for blocks and "\x02" for items
-                key = str( entry["K"] )
-                if key.startswith( "\x01" ):
-                    key = key[1:]
-                    value = int( entry["V"] )
-                    bIDtoN[ value ] = key
-                    bNtoID[ key   ] = value
+            #Use built-in block mappings if FML item data couldn't be found:
+            if fmlItemData is None:
+                bIDtoN = _blockIDtoName
+                bNtoID = _blockNameToID
+            #Otherwise, build block mappings established by the item data:
+            else:
+                bIDtoN = {}
+                bNtoID = {}
+                for entry in fmlItemData:
+                    #Key is the internal name of the block/item, prepended with "\x01" for blocks and "\x02" for items
+                    key = str( entry["K"] )
+                    if key.startswith( "\x01" ):
+                        key = key[1:]
+                        value = int( entry["V"] )
+                        bIDtoN[ value ] = key
+                        bNtoID[ key   ] = value
 
             self._blockIDtoName = bIDtoN
             self._blockNameToID = bNtoID
+
         return bIDtoN.get( id )
+
+    def getItemName( self, id ):
+        """
+        Returns the internal name of an item with the given id or None if this cannot be determined.
+        None may be returned if the world lacks item information, or if an item with that ID couldn't be found in the item information.
+
+        This function may be expensive the first time it is called because it must load the world's leveldata and create id<->name dictionaries.
+        """
+        iIDtoN = self._itemIDtoName
+        if iIDtoN is CACHE:
+            fmlItemData = self._getFMLItemData()
+
+            #Use built-in item mappings if FML item data couldn't be found:
+            if fmlItemData is None:
+                iIDtoN = _itemIDtoName
+                iNtoID = _itemNameToID
+            #Otherwise, build item mappings established by the item data:
+            else:
+                iIDtoN = {}
+                iNtoID = {}
+                for entry in fmlItemData:
+                    #Key is the internal name of the block/item, prepended with "\x01" for blocks and "\x02" for items
+                    key = str( entry["K"] )
+                    if key.startswith( "\x02" ):
+                        key = key[1:]
+                        value = int( entry["V"] )
+                        iIDtoN[ value ] = key
+                        iNtoID[ key   ] = value
+
+            self._itemIDtoName = iIDtoN
+            self._itemNameToID = iNtoID
+
+        return iIDtoN.get( id )
 
     def getSPPlayer( self ):
         """Returns the singleplayer player, or None if the world isn't a singleplayer world."""
-        spnbt=self.getLevelData().rget( "Data", "Player" )
-        if spnbt is not None:
-            return Player( nbt=spnbt )
+        player = self._player
+        if player is CACHE:
+            tag = self.getLevelData()
+            #If the leveldata doesn't exist, then the NBT for the singleplayer player doesn't exist:
+            if tag is None:
+                player = None
+            #Otherwise, the NBT for the singleplayer player can be found at Data/Player:
+            else:
+                tag = tag.rget( "Data", "Player" )
+                #It's possible the data can't be found. This is usually because the world wasn't created as a singleplayer world:
+                if tag is None:
+                    player = None
+                #If the data was found, create a new player with that data:
+                else:
+                    player = Player( nbt=tag )
+            self._player = player
+        return player
 
     def getPlayers( self ):
         """Return a dictionary of playerdata (sorted by uuid) for all players that have played on this world."""
         players = self._players
-        if players is None:
+        if players is CACHE:
             players = {}
+            #Iterate over players in both playerdata/ and players/
             for p in self.iterPlayers():
-                players[ p.uuid ] = p
+                #If data exists for the same player in both playerdata/ and players/, prefer the data from playerdata/ since it's likely more recent
+                uuid = p.uuid
+                if uuid is not None and uuid not in players:
+                    players[ uuid ] = p
             self._players = players
         return players
     players = property( getPlayers )
+
+    def getNether( self ):
+        """Returns this world's Nether dimension."""
+        return self.getDimension( DIM_NETHER )
+    nether = property( getNether )
+    
+    def getOverworld( self ):
+        """Returns this world's Overworld dimension."""
+        return self.getDimension( DIM_OVERWORLD )
+    overworld = property( getOverworld )
+
+    def getEnd( self ):
+        """Returns this world's End dimension."""
+        return self.getDimension( DIM_END )
+    end = property( getEnd )
 
     #Handles iter( world ). Equivalent to world.iterDimensions().
     #Allows use of this class in a for loop like so:
@@ -342,7 +444,7 @@ class _BaseDimension:
         self.path     = path
         self.world    = world
         self.id       = id
-        self._regions = None
+        self._regions = CACHE
 
     def iterRegions( self ):
         """Iterates over every region in this dimension."""
@@ -364,13 +466,13 @@ class _BaseDimension:
                         self
                     )
 
-    def iterChunks( self, content=True ):
+    def iterChunks( self, *, content=True ):
         """
         Iterates over every chunk in every region in this dimension.
         See help( jnbt.Region.getChunk ) for information on content.
         """
         for region in self.iterRegions():
-            yield from region.iterChunks( content )
+            yield from region.iterChunks( content=content )
 
     def iterBlocks( self ):
         """Iterates over every block in every chunk in every region in this dimension."""
@@ -382,25 +484,30 @@ class _BaseDimension:
         Returns the region in this dimension with the given region coordinates, (rx, rz).
         Returns None if there is no region with these coordinates.
         """
-        #Return the cached region object, if any
+        #Return the cached value for these region coordinates, if any
         regions = self._regions
-        if regions is None:
+        if regions is CACHE:
             self._regions = regions = {}
         else:
-            r = self._regions.get( ( rx, rz ) )
-            if r is not None:
+            r = regions.get( ( rx, rz ), CACHE )
+            if r is not CACHE:
                 return r
 
-        #Check if the world has a region with this ID
-        #If so, create a new Region object, cache it, then return it.
+        #Check if this dimension has a region at the given coordinates
         path = os.path.join( self.path, "region", self._fmtFilename.format( rx, rz ) )
+        
+        #If it exists, cache a new Region object
         if os.path.isfile( path ):
-            regions[ rx, rz ] = r = self._clsRegion( rx, rz, path, self )
-            return r
+            r = self._clsRegion( rx, rz, path, self )
+        #If it doesn't exist, cache None so we don't have to check next time
         else:
-            return None
+            r = None
 
-    def getChunk( self, cx, cz, content=True ):
+        #Cache the value, then return it
+        regions[ rx, rz ] = r
+        return r        
+
+    def getChunk( self, cx, cz, *, content=True ):
         """
         Returns the chunk in this dimension with the given chunk coordinates, (cx, cz).
         Returns None if there is no chunk with these coordinates.
@@ -411,7 +518,7 @@ class _BaseDimension:
         region = self.getRegion( rx, rz )
         if region is None:
             return None
-        return region.getChunk( cx, cz, content )
+        return region.getChunk( cx, cz, content=content )
 
     def getBlock( self, x, y, z ):
         """
@@ -450,7 +557,7 @@ class _BaseDimension:
     def getRegions( self ):
         """Returns a dictionary of regions keyed by region coordinates."""
         regions = self._regions
-        if regions is None:
+        if regions is CACHE:
             regions = {}
             for r in self.iterRegions():
                 regions[r.x, r.z] = r
@@ -496,8 +603,8 @@ class _BaseRegion:
         self.path = path
         self.dimension = dimension
 
-        self._chunks = None  #Cached chunks
-        self._length = None  #Number of chunks in this region
+        self._chunks = CACHE  #Cached chunks
+        self._length = CACHE  #Number of chunks in this region
 
     def getWorld( self ):
         """Return the world this region belongs to."""
@@ -549,7 +656,7 @@ class _BaseRegion:
         #Return a list of chunks sorted by offset (so we're always reading in a forward direction)
         return sorted( i2c.values(), key=lambda c: c.offset )
 
-    def iterChunks( self, content=True ):
+    def iterChunks( self, *, content=True ):
         """
         Iterates over every chunk in this region.
         See help( jnbt.Region.getChunk ) for information on content.
@@ -566,10 +673,10 @@ class _BaseRegion:
 
     def iterBlocks( self ):
         """Iterates over every block in every chunk in this region."""
-        for chunk in self.iterChunks():
+        for chunk in self.iterChunks( content=True ):
             yield from chunk.iterBlocks()
 
-    def getChunk( self, cx, cz, content=True ):
+    def getChunk( self, cx, cz, *, content=True ):
         """
         Returns the chunk with the given chunk coordinates relative to this region, (cx, cz).
         Returns None if there is no chunk with these coordinates.
@@ -578,13 +685,14 @@ class _BaseRegion:
             Reading chunk contents is an expensive operation, so if you don't plan to use them, give False for this argument.
             Defaults to True.
         """
+        #Return the cached value for these chunk coordinates, if any
         chunks = self._chunks
-        if chunks is None:
+        if chunks is CACHE:
             self._chunks = chunks = {}
         else:
-            c = chunks.get( ( cx, cz ) )
-            if c is not None:
-                if content and c.nbt is None:
+            c = chunks.get( ( cx, cz ), CACHE )
+            if c is not CACHE:
+                if content and c is not None and c.nbt is None:
                     with open( self.path, "rb" ) as file:
                         c._read( file )
                 return c
@@ -596,49 +704,53 @@ class _BaseRegion:
             #Read location
             file.seek( i4, os.SEEK_SET )
             loc = _rui( file )
+            #If it doesn't exist, cache None so we don't have to check next time
             if loc == 0:
-                return None
+                c = None
+            #If it exists, cache a new Chunk object
+            else:
+                offset    = 4096 * ( ( loc & 0xFFFFFF00 ) >> 8 )
+                allocsize = 4096 * ( ( loc & 0x000000FF )      )
 
-            offset    = 4096 * ( ( loc & 0xFFFFFF00 ) >> 8 )
-            allocsize = 4096 * ( ( loc & 0x000000FF )      )
+                #Read timestamp
+                file.seek( 4096 + i4, os.SEEK_SET )
+                timestamp = _rui( file )
 
-            #Read timestamp
-            file.seek( 4096 + i4, os.SEEK_SET )
-            timestamp = _rui( file )
+                #Read chunk header
+                c = self._clsChunk(
+                    32 * self.x + cx,
+                    32 * self.z + cz,
+                    cx,
+                    cz,
+                    offset,
+                    allocsize,
+                    timestamp,
+                    None,
+                    None,
+                    None,
+                    self
+                )
+                if content:
+                    c._read( file )
 
-            #Read chunk header
-            c = self._clsChunk(
-                32 * self.x + cx,
-                32 * self.z + cz,
-                cx,
-                cz,
-                offset,
-                allocsize,
-                timestamp,
-                None,
-                None,
-                None,
-                self
-            )
-            if content:
-                c._read( file )
-
+        #Cache the value, then return it
         chunks[ cx, cz ] = c
         return c
 
-    def getChunks( self, content=True ):
+    def getChunks( self, *, content=True ):
         """
         Returns a dictionary of chunks in this region keyed by chunk coordinates relative to this region, (cx, cz).
         cx and cz will be in the range [0,31].
         See help( jnbt.Region.getChunk ) for information on content.
         """
         chunks = self._chunks
-        if chunks is None:
+        if chunks is CACHE:
             chunks = {}
-            for c in self.iterChunks():
+            for c in self.iterChunks( content=content ):
                 chunks[c.x,c.z] = c
             self._chunks = chunks
         return chunks
+    chunks = property( getChunks )
 
     def __len__( self ):
         """
@@ -646,7 +758,7 @@ class _BaseRegion:
         Returns an int in the range [0, 1024].
         """
         l = self._length
-        if l is None:
+        if l is CACHE:
             l = 0
             with open( self.path, "rb" ) as file:
                 locations  = _ruis( file, 1024 )

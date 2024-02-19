@@ -7,14 +7,9 @@ import os.path
 
 from jnbt.shared        import scandir
 from jnbt.mc.util       import getMinecraftPath
-from jnbt.mc.world.base import LVLFMT_REGION, LVLFMT_ANVIL
-from jnbt.mc.world.mcr import World as MCRWorld, Dimension as MCRDimension, Region as MCRRegion, RE_FILENAME as RE_FILENAME_MCR
-from jnbt.mc.world.mca import World as MCAWorld, Dimension as MCADimension, Region as MCARegion, RE_FILENAME as RE_FILENAME_MCA
-
-#Dimension IDs for the Overworld, Nether, and End
-DIM_NETHER    = -1
-DIM_OVERWORLD =  0
-DIM_END       =  1
+from jnbt.mc.world.base import LVLFMT_REGION, LVLFMT_ANVIL, DIM_NETHER, DIM_OVERWORLD, DIM_END
+from jnbt.mc.world.mcr  import World as MCRWorld, Dimension as MCRDimension, Region as MCRRegion, RE_FILENAME as RE_FILENAME_MCR
+from jnbt.mc.world.mca  import World as MCAWorld, Dimension as MCADimension, Region as MCARegion, RE_FILENAME as RE_FILENAME_MCA
 
 #These tuples map LVLFMT_* enums to World, Dimension, and Region classes for each format
 LVLFMT_TO_WORLD = (

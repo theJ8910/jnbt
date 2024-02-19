@@ -110,8 +110,7 @@ import jnbt
 #Open the world at <your minecraft directory>/saves/New World
 world = jnbt.getWorld( "New World" )
 
-overworld = world[ jnbt.DIM_OVERWORLD ]
-for block in overworld.iterBlocks():
+for block in world.overworld.iterBlocks():
     if block.name == "minecraft:iron_ore":
         print( block.x, block.y, block.z )
 ```
