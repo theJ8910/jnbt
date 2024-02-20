@@ -374,6 +374,7 @@ class _BaseWorld:
                     player = Player( nbt=tag )
             self._player = player
         return player
+    player = property( getSPPlayer )
 
     def getPlayers( self ):
         """Return a dictionary of playerdata (sorted by uuid) for all players that have played on this world."""
