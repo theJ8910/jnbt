@@ -134,7 +134,7 @@ If you have git installed locally, the following command can be used to install 
 
 Otherwise, you can download jnbt [here](https://github.com/theJ8910/jnbt/archive/dev.zip) and run the following command:
 
-`pip install dev.zip`
+`pip install jnbt-dev.zip`
 
 Additional Resources
 -------------------
