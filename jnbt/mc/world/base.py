@@ -12,9 +12,9 @@ from jnbt.mc.data   import _blockIDtoName, _blockNameToID, _itemIDtoName, _itemN
 from jnbt.mc.player import Player
 
 #Regular expression that matches player save files in <world>/playerdata; i.e. filenames of the form "{8}-{4}-{4}-{4}-{12}.dat", where {n} is a grouping of bytes that makes up the player's UUID, expressed as n hex digits.
-RE_PLAYERDATA_FILE = re.compile( "^([0-9a-f]{8})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{12})\.dat$", re.IGNORECASE )
+RE_PLAYERDATA_FILE = re.compile( "^([0-9a-f]{8})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{12})\\.dat$", re.IGNORECASE )
 #Regular expression that matches player save files in <world>/players; i.e. filenames of the form "{name}.dat", where name is the player's name
-RE_PLAYERS_FILE    = re.compile( "^(.+)\.dat$", re.IGNORECASE )
+RE_PLAYERS_FILE    = re.compile( "^(.+)\\.dat$", re.IGNORECASE )
 
 #Compression types
 COMPRESSION_NONE = 0

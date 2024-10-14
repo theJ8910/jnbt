@@ -14,7 +14,7 @@ import re
 from jnbt.mc.world.base import LVLFMT_ANVIL, _BaseWorld, _BaseDimension, _BaseRegion, _BaseChunk, _BaseBlock, _n
 
 #Regular expressions that matches Anvil filenames; i.e. filenames of the form "r.{x}.{z}.mca" (where x and z are region coordinates)
-RE_FILENAME  = re.compile( "^r\.(-?\d+)\.(-?\d+)\.mca$", re.IGNORECASE )
+RE_FILENAME  = re.compile( "^r\\.(-?\\d+)\\.(-?\\d+)\\.mca$", re.IGNORECASE )
 FMT_FILENAME = "r.{:d}.{:d}.mca"
 NAME         = "anvil"
 

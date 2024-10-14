@@ -14,7 +14,7 @@ import re
 from jnbt.mc.world.base import LVLFMT_REGION, _BaseWorld, _BaseDimension, _BaseRegion, _BaseChunk, _BaseBlock
 
 #Regular expressions that matches McRegion filenames; i.e. filenames of the form "r.{x}.{z}.mcr" (where x and z are region coordinates)
-RE_FILENAME  = re.compile( "^r\.(-?\d+)\.(-?\d+)\.mcr$", re.IGNORECASE )
+RE_FILENAME  = re.compile( "^r\\.(-?\\d+)\\.(-?\\d+)\\.mcr$", re.IGNORECASE )
 FMT_FILENAME = "r.{:d}.{:d}.mcr"
 NAME         = "region"
 
