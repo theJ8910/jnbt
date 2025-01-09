@@ -65,7 +65,7 @@ _od_setitem     = OrderedDict.__setitem__
 #Additionally, the deduced tag class's constructor may also raise exceptions during conversion.
 def _TL_init_v2t( i ):
     i = iter( i )
-    #Note: Python 3.7 compatibility (see PEP 380).
+    #Note: Python 3.7 compatibility (see PEP 479).
     #Since Python 3.7, throwing StopIteration inside of a generator no longer silently terminates it; now it's converted to a RuntimeError instead.
     #Previously, next() would throw a StopIteration when i was empty which would terminate the generator.
     #But now to achieve the same effect, we need to explicitly catch StopIteration and return.
@@ -223,7 +223,7 @@ def _makeTagSetDefault( methodname, tagclass ):
             t = tagclass( *args, **kwargs )
             _od_setitem( self, name, t )
         elif t.tagType != tagclass.tagType:
-            raise WrongTagError( tagclass.tagType, t.tagType );
+            raise WrongTagError( tagclass.tagType, t.tagType )
         return t
     setdefault.__name__ = methodname
     setdefault.__doc__ = \

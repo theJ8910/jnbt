@@ -140,25 +140,24 @@ Additional Resources
 -------------------
 These resources were used in the development of jnbt and may help you to better understand NBT and how Minecraft utilizes it:
 
-http://web.archive.org/web/20110723210920/http://www.minecraft.net/docs/NBT.txt
+https://web.archive.org/web/20110723210920/http://www.minecraft.net/docs/NBT.txt
 
-http://minecraft.gamepedia.com/NBT_Format
+https://minecraft.fandom.com/wiki/NBT_format
 
-http://wiki.vg/Nbt
+https://minecraft.wiki/w/Minecraft_Wiki:Projects/wiki.vg_merge/NBT
 
+https://minecraft.fandom.com/wiki/Java_Edition_level_format
 
-http://minecraft.gamepedia.com/Level_Format
+https://minecraft.fandom.com/wiki/Region_file_format
 
-http://minecraft.gamepedia.com/Region_file_format
+https://minecraft.fandom.com/wiki/Anvil_file_format
 
-http://minecraft.gamepedia.com/Anvil_file_format
+https://minecraft.fandom.com/wiki/Chunk_format
 
-http://minecraft.gamepedia.com/Chunk_format
+https://minecraft.fandom.com/wiki/Chunk_format?oldid=249962
 
-http://minecraft.gamepedia.com/index.php?title=Chunk_format&oldid=249962
+https://minecraft.fandom.com/wiki/Player.dat_format
 
-http://minecraft.gamepedia.com/Player.dat_format
+https://minecraft.wiki/w/Minecraft_Wiki:Projects/wiki.vg_merge/Region_Files
 
-http://wiki.vg/Region_Files
-
-http://wiki.vg/Map_Format
+https://minecraft.wiki/w/Minecraft_Wiki:Projects/wiki.vg_merge/Map_Format

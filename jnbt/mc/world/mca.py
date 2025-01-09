@@ -52,6 +52,28 @@ class Region( _BaseRegion ):
     #_clsChunk = (outside of class)
 Dimension._clsRegion = Region
 
+#TODO: MC 1.13 kept the anvil format, but uses a different chunk format.
+#The iterBlocks / getBlock methods here will FAIL on 1.13 or newer worlds.
+#Specifically, Blocks, Add, and Data were removed, and Palette and BlockStates was added.
+#Palette is a TAG_List containing every unique block state in the chunk, as TAG_Compounds.
+#Each TAG_Compound contains two keys:
+#    Name (the block ID as a TAG_String)
+#    Properties (a TAG_Compound, optional.)
+#        This entry maps one or more block state properties names (e.g. "minecraft:redstone_ore" has the "lit" property) to its respective value,
+#        stored as a TAG_String (e.g. "false").
+#BlockStates is a TAG_Long_Array of variable size, enough to store 4096 (16x16x16) Palette indices.
+#    I find it easier to think of this as an array of indices (where each index is "N" bits large), rather than an array of longs.
+#    Each long in this array provides 64 bits of space in which the indices can be stored.
+#    If we need N bits to represent the largest index in Palette, then we need a TAG_Long_Array containing ceil( ( 4096 * N ) / 64 ) longs to store this many entries.
+#    N can be 4 at a minimum (in which case Palette will contain 16 or fewer entries and BlockStates will contain 256 longs),
+#    and 12 at a maximum (in which case Palette will contain 4096 entries and BlockStates will contain 1024 longs).
+#    If N doesn't evenly divide 64 (e.g. N=5), then the bits for an index may span two longs.
+#    Indices are ordered within the array in an YZX order as they were before (e.g. the first index = (0,0,0), the second index = (1,0,0), the 16th index = (0,0,1), the 256th index = (0,1,0), etc).
+#    The actual block state for these coordinates is determined by the block state stored in Palette at the particular index.
+#
+#I need to:
+#    1. Write code to handle the new chunk format
+#    2. Pin down exactly which Minecraft version the change happened in, so we can easily determine which code to use.
 class Chunk( _BaseChunk ):
     """Represents an MCA-formatted chunk."""
     __slots__ = ()
